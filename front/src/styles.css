@@ -1,0 +1,48 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+  color: #15272a;
+  background: #eff5f3;
+  line-height: 1.55;
+}
+
+body { margin: 0; }
+.shell { max-width: 1120px; margin-inline: auto; padding-inline: clamp(1rem, 4vw, 3rem); }
+header { background: #123e3a; color: #fff; padding-block: 2rem; }
+header p { margin-bottom: 0; }
+h1, h2 { line-height: 1.2; margin-top: 0; }
+h1 { font-size: clamp(1.85rem, 5vw, 2.65rem); margin-bottom: .45rem; }
+h2 { font-size: 1.35rem; margin-bottom: .8rem; }
+main { padding-block: 1.5rem 3rem; }
+.panel {
+  padding: clamp(1rem, 3vw, 1.8rem);
+  border: 1px solid #bdcec9;
+  border-radius: .65rem;
+  background: #fff;
+  margin-bottom: 1rem;
+}
+.inputs, .metadata { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 255px), 1fr)); }
+.inputs > div { min-width: 0; }
+label { display: block; font-weight: 650; margin-bottom: .3rem; }
+button, input, select { font: inherit; max-width: 100%; }
+select, button { padding: .5rem .8rem; border: 1px solid #527871; border-radius: .35rem; }
+button { background: #075a4e; color: #fff; cursor: pointer; font-weight: 650; }
+button.secondary { background: #fff; color: #12453d; }
+button:disabled { background: #e8efed; color: #546866; cursor: default; border-color: #8a9f9a; }
+:focus-visible { outline: 3px solid #a34806; outline-offset: 3px; }
+.actions, .pagination { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.pagination { margin-top: 1rem; }
+progress { width: min(100%, 25rem); accent-color: #075a4e; }
+dt, summary { font-weight: 650; }
+dd { margin: 0; overflow-wrap: anywhere; }
+summary { cursor: pointer; }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border-bottom: 1px solid #cfddd9; text-align: left; vertical-align: top; padding: .55rem .65rem; }
+thead { background: #e5f0ed; }
+tbody tr:nth-child(even) { background: #f6faf9; }
+.observed { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 8rem; }
+.reason { display: block; font-size: .88rem; min-width: 8rem; }
+.sr-only { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; white-space: nowrap; }
+.skip-link { position: absolute; inset: .5rem auto auto .5rem; translate: 0 -200%; color: #15272a; background: white; padding: .5rem; }
+.skip-link:focus { translate: 0; }

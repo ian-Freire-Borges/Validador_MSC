@@ -1,0 +1,9 @@
+/node_modules/
+/dist/
+/.angular/
+/.npm-cache/
+__pycache__/
+/front/node_modules/
+/front/dist/
+/front/.angular/
+/front/.npm-cache/

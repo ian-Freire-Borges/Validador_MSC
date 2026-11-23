@@ -1,0 +1,119 @@
+<a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+<header>
+  <div class="shell">
+    <h1>Validador MSC 2026</h1>
+    <p>Pré-validação de arquivos do Executivo municipal.</p>
+  </div>
+</header>
+<main id="conteudo" tabindex="-1" class="shell">
+  <section class="panel" aria-labelledby="entrada">
+    <h2 id="entrada">Arquivo para validar</h2>
+    <p id="privacidade">O arquivo é processado na memória deste navegador. O conteúdo não é enviado nem salvo pelo aplicativo.</p>
+    <div class="inputs">
+      <div>
+        <label for="arquivo">Arquivo MSC em CSV</label>
+        <input id="arquivo" type="file" accept=".csv,text/csv" #fileInput
+               aria-describedby="privacidade" (change)="selectFile(fileInput.files)">
+      </div>
+      <div>
+        <label for="codificacao">Codificação</label>
+        <select id="codificacao" #encodingInput [value]="encoding()" (change)="selectEncoding(encodingInput.value)" aria-describedby="orientacao">
+          <option value="UTF-8">UTF-8</option>
+          <option value="Windows-1252">Windows-1252</option>
+        </select>
+      </div>
+    </div>
+    <p id="orientacao">Se o arquivo estiver em Windows-1252, selecione essa codificação antes de validar.</p>
+    <div class="actions">
+      <button type="button" (click)="run()" [disabled]="!fileName() || busy()">Validar</button>
+      @if (busy()) {
+        <button type="button" class="secondary" (click)="cancel()">Cancelar validação</button>
+      }
+    </div>
+    <p role="status" aria-live="polite" aria-atomic="true">{{ status() }}</p>
+    @if (busy()) {
+      <label for="progresso">Progresso da validação</label>
+      <progress id="progresso" [value]="progress()" max="100">{{ progress() }}%</progress>
+    }
+  </section>
+
+  @if (result(); as report) {
+    <section class="panel" aria-labelledby="resultado">
+      <h2 id="resultado">{{ report.summary }}</h2>
+      <dl class="metadata">
+        <div><dt>Instituição no arquivo</dt><dd>{{ report.institution === '' ? '(vazia)' : (report.institution ?? 'Indisponível') }} @if (report.institutionName) { · {{ report.institutionName }} }</dd></div>
+        <div><dt>Competência no arquivo</dt><dd>{{ report.period === '' ? '(vazia)' : (report.period ?? 'Indisponível') }} @if (report.periodKind) { · {{ report.periodKind }} }</dd></div>
+        <div><dt>Codificação utilizada</dt><dd>{{ report.encoding }}</dd></div>
+        <div><dt>Registros lidos</dt><dd>{{ report.records }}</dd></div>
+        <div><dt>Achados</dt><dd>{{ report.findings.length }}</dd></div>
+        <div><dt>Versão do catálogo</dt><dd>{{ report.catalogVersion ?? 'Indisponível' }} @if (!report.catalogCompatible) { · Incompatível ou indisponível }</dd></div>
+      </dl>
+      <p>Confira a instituição e a competência antes do envio. A pré-validação local não equivale à aprovação do Siconfi.</p>
+      <details>
+        <summary>Cobertura e limites da pré-validação</summary>
+        <p>O MVP 1 cobre arquivos CSV do Executivo municipal de 2026, com as regras de estrutura e conteúdo listadas abaixo. A competência 2026-13 usa as mesmas verificações ativas.</p>
+        <p><strong>Não coberta:</strong> consistência de saldos e débitos/créditos, domínios FR/CO/FS/ND/NR/AI, adequação do PO à esfera, relação entre dezembro e encerramento, zeramento de contas de resultado, de-para e regras do Ranking.</p>
+        @if (report.institutionStatus === 'outra-esfera') {
+          <p>A instituição pertence a outra esfera e está fora da cobertura do perfil.</p>
+        } @else if (report.institutionStatus === 'cadastro-inconclusivo') {
+          <p>O código informado tem formato municipal e o cadastro é inconclusivo na edição da tabela utilizada.</p>
+        }
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="achados">
+      <h2 id="achados">Achados</h2>
+      @if (report.findings.length === 0) {
+        <p>Nenhum achado localizado. Consulte os estados por regra para conferir a cobertura.</p>
+      } @else {
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de achados">
+          <table>
+            <caption class="sr-only">Achados da pré-validação</caption>
+            <thead><tr><th scope="col">Regra</th><th scope="col">Localização</th><th scope="col">Estado</th><th scope="col">Observado</th><th scope="col">Esperado</th></tr></thead>
+            <tbody>
+              @for (finding of visible(); track $index) {
+                <tr>
+                  <td>{{ finding.id }}</td><td>{{ describeLocation(finding) }}</td>
+                  <td>{{ finding.status }} @if (finding.reason) { · {{ findingReason(finding.reason) }} }</td>
+                  <td class="observed">{{ finding.observed === '' ? '(vazio)' : finding.observed }}</td>
+                  <td>{{ finding.expected }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <nav aria-label="Paginação de achados" class="pagination">
+          <button type="button" class="secondary" (click)="movePage(-1)" [disabled]="page() === 1">Anterior</button>
+          <span aria-live="polite">Página {{ page() }} de {{ pageCount() }}</span>
+          <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
+        </nav>
+      }
+    </section>
+
+    <section class="panel" aria-labelledby="regras">
+      <h2 id="regras">Estados por regra</h2>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de estados por regra">
+        <table>
+          <caption class="sr-only">Cobertura, contagens e fontes das regras</caption>
+          <thead><tr><th scope="col">Regra</th><th scope="col">Estado</th><th scope="col">Conformes</th><th scope="col">Falhas</th><th scope="col">Bloqueios</th><th scope="col">Fonte</th></tr></thead>
+          <tbody>
+            @for (id of ruleIds; track id) {
+              <tr>
+                <th scope="row">{{ id }} · {{ ruleInfo[id][0] }}</th><td>{{ report.rules[id].state }}</td>
+                <td>{{ report.rules[id].passed }}</td><td>{{ report.rules[id].failed }}</td><td>{{ report.rules[id].blocked }}
+                @if (report.rules[id].blocked) { <span class="reason">{{ reasonText(report.rules[id].reasons) }}</span> }</td>
+                <td>{{ ruleInfo[id][1] }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+    @if (timing(); as metrics) {
+      <details class="panel">
+        <summary>Tempos medidos nesta execução</summary>
+        <p>Leitura do arquivo <output id="read-ms">{{ metrics.readMs.toFixed(2) }}</output> ms. Decodificação e análise <output id="analysis-ms">{{ metrics.analysisMs.toFixed(2) }}</output> ms.</p>
+      </details>
+    }
+  }
+</main>

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "cli": {"analytics": false, "cache": {"enabled": false}},
+  "projects": {
+    "validador-msc": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "src/main.ts",
+            "index": "src/index.html",
+            "tsConfig": "tsconfig.json",
+            "webWorkerTsConfig": "tsconfig.worker.json",
+            "styles": ["src/styles.css"],
+            "outputPath": "dist/validador-msc"
+          },
+          "configurations": {"production": {}, "development": {"optimization": false, "sourceMap": true}},
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": {"buildTarget": "validador-msc:build:development", "liveReload": false, "hmr": false}
+        }
+      }
+    }
+  }
+}
