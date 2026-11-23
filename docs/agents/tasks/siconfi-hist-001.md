@@ -1,0 +1,34 @@
+# ARQ-SICONFI-HIST-001
+
+- Etapa: implementação.
+- Responsável: Desenvolvedor.
+- Base Git: 7d46b02883b83307f59ff02f4864877310b7a11b, árvore limpa no encaminhamento.
+- Referência: .npm-cache/ARQ-SICONFI-HIST-001.md, proposta aprovada pelo usuário.
+- Evidência prévia informada pelo usuário: três rotas com HTTP 200, Origin local refletida e envelope paginado com limit=1. Patrimonial respondeu também com offset=1.
+- Versão candidata e pareceres: pendentes.
+- Rodada de correção: 0.
+- Condição de liberação: origem real de produção pendente de informação e validação. Deploy fora do escopo.
+- Próximo passo: receber implementação, congelar a versão e encaminhar para QA.
+- Evidência de navegação localizada em .npm-cache/siconfi-hist-live-browser.json. Registra resposta CORS local e continuação patrimonial. O link de continuação anuncia host Oracle diferente do endpoint público. Evidência enviada ao Desenvolvedor para implementar a continuidade pelo endpoint oficial.
+- No ambiente do Desenvolvedor, as tentativas via curl retornaram erro de conexão e a leitura web do YAML foi bloqueada pelo tipo de conteúdo. Solicitadas amostras dos corpos originais para complementar a confirmação.
+- As três amostras integrais e o OpenAPI foram localizados em .npm-cache/siconfi-hist-live-msc_*.json e .npm-cache/siconfi-hist-openapi.yaml e encaminhados ao Desenvolvedor.
+- Candidata r0: SHA-256 do diff 4168dd8ab73c5a37a56eb8c58b0a882f3f2a8f3e7d3b2b1399e1ff87c9f2b35d. Manifesto com Git-base e arquivos: .npm-cache/siconfi-hist-candidate-r0.json. Diff: .npm-cache/siconfi-hist-candidate-r0.diff.
+- Testes do Orquestrador: 32/32 passaram, incluindo Worker e testes do histórico. Log: .npm-cache/siconfi-hist-test-r0.txt.
+- Build interno: falhou com Cannot read directory ../../../..: Acesso negado. Log: .npm-cache/siconfi-hist-build-r0.txt. Build externo solicitado para front/dist/verification com log .npm-cache/siconfi-hist-build-external.txt. Bloqueio de infraestrutura, rodada 0.
+- Etapa atual: QA independente da r0. Responsável: QA/Testes. Reviewer aguarda parecer favorável para o mesmo hash.
+- Build externo r0 localizado. Manifesto pós-build .npm-cache/siconfi-hist-external-after.json corresponde à candidata r0. Bundle em front/dist/verification, encaminhado ao QA.
+- QA r0 passou em navegador local com mocks, teclado, viewport 375px, precisão, paginação, cache, erros, cancelamento, privacidade e regressão do Worker com rede externa bloqueada. Evidências: .npm-cache/siconfi-hist-qa-browser-r0.json e .npm-cache/siconfi-hist-qa-service-r0.json.
+- QA r0 bloqueado para API real nesta sessão: curl 7 e navegador sem resposta HTTP. Parecer provisório em .npm-cache/siconfi-hist-qa-parecer-r0.md. Solicitada execução externa do roteiro independente do QA e devolução da evidência para o mesmo bundle. Rodada de correção permanece 0.
+- QA r0: aprovado para escopo local. Execução externa encerrou o bloqueio de egress. Cinco GETs limit=1 com HTTP 200 e CORS, incluindo continuação e vazio. Interface real confirmou offsets 0 e 100, recorte vazio e ACAO http://127.0.0.1:4200. Evidência .npm-cache/siconfi-hist-qa-browser-live-external-r0.json e parecer .npm-cache/siconfi-hist-qa-parecer-r0.md.
+- Etapa atual: Code Review independente da r0, sem Ponytail ou Graphify. A identidade da candidata após o QA foi reconfirmada com .npm-cache/siconfi-hist-pre-review-r0.json. Rodada de correção 0.
+- Reviewer r0: reprovado. R1 obrigatório reproduz tipos de origem inválidos aceitos após normalização e limite fracionário arredondado pelo JSON.parse. Parecer .npm-cache/siconfi-hist-review-parecer-r0.md; reprodução .npm-cache/siconfi-hist-review-schema-r0.mjs. Sugestão S1 sobre remoção de entradas expiradas é opcional.
+- Etapa atual: correção do R1, rodada 1, Desenvolvedor. Próximo passo: congelar r1, build e testes, rechecagem do QA e do Reviewer em sequência sobre a mesma versão.
+- Candidata r1: SHA-256 do diff 28fee5deaca67e515b71a14cf406dd081551e38dd600833abce18955cbb6562b. Manifesto e diff em .npm-cache/siconfi-hist-candidate-r1.{json,diff}. Correção alterou só o serviço e seu teste.
+- Testes r1: 34/34, inclusive Worker, .npm-cache/siconfi-hist-test-r1.txt. Build interno voltou a falhar em diretório ancestral, .npm-cache/siconfi-hist-build-r1.txt. Atualização do bundle externo solicitada.
+- Etapa atual: QA de rechecagem r1. Rodada 1. Reviewer aguarda parecer favorável para o mesmo hash.
+- Build externo r1 confirmado com manifestos antes e depois no log .npm-cache/siconfi-hist-build-external.txt.
+- QA r1: aprovado. Casos R1, amostras e precisão em .npm-cache/siconfi-hist-qa-schema-r1.json; regressão, privacidade e mocks no bundle r1 em siconfi-hist-qa-browser-r1.json; API real, continuação, vazio e CORS local em siconfi-hist-qa-browser-live-external-r1.json. Parecer .npm-cache/siconfi-hist-qa-parecer-r1.md.
+- Etapa atual: Reviewer independente r1, rodada 1. Manifesto recomposto .npm-cache/siconfi-hist-pre-review-r1.json idêntico à candidata.
+- Reviewer r1: aprovado, R1 encerrado. Ensaio independente aceita três amostras e rejeita sete variantes inválidas. Suite focal 8/8. Parecer .npm-cache/siconfi-hist-review-parecer-r1.md e reprodução .npm-cache/siconfi-hist-review-schema-r1.mjs. S1 permanece sugestão não bloqueante.
+- Etapa final: aprovação técnica para escopo local na r1, após uma rodada de correção. Manifesto final .npm-cache/siconfi-hist-final-r1.json idêntico ao congelamento. Sem stage, commit, push, merge ou deploy.
+- Liberação: pendentes CORS na origem produtiva real ainda não informada e compatibilidade do volume de produção com o limite da API. Próximo passo condicionado à informação da origem e do volume e à autorização própria de integração.

@@ -3,6 +3,7 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { valueTypes } from './catalog.ts';
 import { balanceSpecification, valueTypeLabels } from './balances.ts';
 import { validationRules } from './validation.ts';
+import { SiconfiHistory } from './siconfi-history.component.ts';
 import type { OnDestroy } from '@angular/core';
 import type { Encoding } from './csv.ts';
 import type { BlockReason, Finding, RuleId, ValidationResult } from './validation.ts';
@@ -29,6 +30,7 @@ const reasonLabels: Record<BlockReason, string> = {
 
 @Component({
   selector: 'msc-root',
+  imports: [SiconfiHistory],
   templateUrl: './app.html',
 })
 class App implements OnDestroy {
