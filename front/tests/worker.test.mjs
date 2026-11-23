@@ -16,7 +16,9 @@ test('Worker carrega o catálogo, publica progresso e retorna a validação', { 
   const worker = new Worker(new URL('data:text/javascript,' + encodeURIComponent(entrypoint)));
   t.after(() => worker.terminate());
 
-  const csv = ['3550308EX;2026-01', columns.join(';'), '111110100;10131;PO;;;;;;;;;;;12.34;ending_balance;D'].join('\n');
+  const csv = ['3550308EX;2026-01', columns.join(';'),
+    '111110100;10131;PO;;;;;;;;;;;10;beginning_balance;D',
+    '111110100;10131;PO;;;;;;;;;;;10;period_change;C'].join('\n');
   const messages = [];
   const result = await new Promise((resolve, reject) => {
     worker.on('error', reject);
@@ -29,9 +31,14 @@ test('Worker carrega o catálogo, publica progresso e retorna a validação', { 
   });
 
   assert.deepEqual(messages, ['progress', 'progress', 'complete']);
-  assert.equal(result.records, 1);
+  assert.equal(result.records, 2);
   assert.equal(result.catalogCompatible, true);
   assert.equal(result.encoding, 'UTF-8');
-  assert.equal(result.summary, 'Sem pendências nas verificações executadas do MVP 1');
+  assert.equal(result.summary, 'Sem pendências nas verificações executadas do MVP 1.1');
   assert.equal(result.findings.length, 0);
+  assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
+  assert.equal(result.rules['SAL-EQU-01'].state, 'Conforme');
+  assert.deepEqual(result.balances.notices.map(notice => [notice.id, notice.type, notice.totals.at(-1).value]), [
+    ['SAL-EQU-TIPO', 'beginning_balance', '10'], ['SAL-EQU-TIPO', 'period_change', '−10'],
+  ]);
 });

@@ -1,6 +1,8 @@
 import { Component, computed, signal } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { rules } from './catalog.ts';
+import { valueTypes } from './catalog.ts';
+import { balanceSpecification, valueTypeLabels } from './balances.ts';
+import { validationRules } from './validation.ts';
 import type { OnDestroy } from '@angular/core';
 import type { Encoding } from './csv.ts';
 import type { BlockReason, Finding, RuleId, ValidationResult } from './validation.ts';
@@ -20,6 +22,9 @@ const reasonLabels: Record<BlockReason, string> = {
   'largura': 'Largura ou composição do IC inválida',
   'outra-esfera': 'Executivo de outra esfera, fora da cobertura',
   'cadastro-inconclusivo': 'Cadastro inconclusivo na edição da tabela Siconfi',
+  'sem-registros': 'Arquivo sem registros',
+  'chave-ic': 'Combinação de informações complementares incompleta, inválida ou ambígua',
+  'dados-saldo': 'Valor, tipo de valor ou natureza D/C inválido ou ausente',
 };
 
 @Component({
@@ -43,8 +48,30 @@ class App implements OnDestroy {
     const first = (this.page() - 1) * this.pageSize;
     return this.result()?.findings.slice(first, first + this.pageSize) ?? [];
   });
-  readonly ruleIds = Object.keys(rules) as RuleId[];
-  readonly ruleInfo = rules;
+  readonly ruleIds = Object.keys(validationRules) as RuleId[];
+  readonly ruleInfo = validationRules;
+  readonly balanceSpecification = balanceSpecification;
+  readonly balancePage = signal(1);
+  readonly noticePage = signal(1);
+  readonly balancePageCount = computed(() => Math.max(1, Math.ceil((this.result()?.balances.groups.length ?? 0) / this.pageSize)));
+  readonly noticePageCount = computed(() => Math.max(1, Math.ceil((this.result()?.balances.notices.length ?? 0) / this.pageSize)));
+  readonly visibleBalances = computed(() => {
+    const first = (this.balancePage() - 1) * this.pageSize;
+    return this.result()?.balances.groups.slice(first, first + this.pageSize) ?? [];
+  });
+  readonly visibleNotices = computed(() => {
+    const first = (this.noticePage() - 1) * this.pageSize;
+    return this.result()?.balances.notices.slice(first, first + this.pageSize) ?? [];
+  });
+
+  typeLabel(type: string): string {
+    return valueTypeLabels[valueTypes.indexOf(type)];
+  }
+
+  lineText(lines: { count: number; items: number[] }): string {
+    if (!lines.count) return '—';
+    return lines.count > lines.items.length ? `${lines.count} registros (amostra das linhas: ${lines.items.join(', ')})` : lines.items.join(', ');
+  }
 
   selectFile(files: FileList | null): void {
     this.file = files?.item(0) ?? null;
@@ -131,6 +158,8 @@ class App implements OnDestroy {
     this.timing.set(null);
     this.progress.set(0);
     this.page.set(1);
+    this.balancePage.set(1);
+    this.noticePage.set(1);
     this.status.set(status);
   }
 

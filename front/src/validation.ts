@@ -1,13 +1,16 @@
 import { columns, compatibleCatalog, natures, rules, valueTypes } from './catalog.ts';
 import { decodeLines, parseRecord } from './csv.ts';
 import type { Encoding } from './csv.ts';
+import { balanceOrigin, balanceRules, Balances } from './balances.ts';
+import type { BalanceOrigin } from './balances.ts';
 
-export type RuleId = keyof typeof rules;
+export const validationRules = { ...rules, ...balanceRules };
+export type RuleId = keyof typeof validationRules;
 export type RuleState = 'Conforme' | 'Falhou' | 'Bloqueada' | 'Não aplicável';
 export type BlockReason =
   | 'leitura-incompleta' | 'metadados' | 'guia' | 'instituição' | 'competência' | 'catálogo'
   | 'registro' | 'par-incompleto' | 'tipo' | 'conta' | 'largura'
-  | 'outra-esfera' | 'cadastro-inconclusivo';
+  | 'outra-esfera' | 'cadastro-inconclusivo' | 'sem-registros' | 'chave-ic' | 'dados-saldo';
 
 export interface Finding {
   id: RuleId;
@@ -49,14 +52,15 @@ export interface ValidationResult {
   records: number;
   findings: Finding[];
   rules: Record<RuleId, RuleCounts & { state: RuleState }>;
-  summary: 'Pendências nas verificações do MVP 1' | 'Verificação incompleta' | 'Sem pendências nas verificações executadas do MVP 1';
+  balances: ReturnType<Balances['finish']>;
+  summary: 'Pendências nas verificações do MVP 1.1' | 'Verificação incompleta' | 'Sem pendências nas verificações executadas do MVP 1.1';
 }
 
 const contentRules: RuleId[] = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08'];
 const recordRules: RuleId[] = ['E06', 'E07', 'E08', 'E10', ...contentRules];
 const dataRules: RuleId[] = ['E05', ...recordRules];
 const domainRules = { FP: 'C06', DC: 'C07', PO: 'C08' } as const;
-const ruleIds = Object.keys(rules) as RuleId[];
+const ruleIds = Object.keys(validationRules) as RuleId[];
 
 function location(line: number, fieldIndex?: number, fieldName?: string): Location {
   if (fieldIndex === undefined) return { line };
@@ -81,6 +85,7 @@ export function validate(
     ? candidate.version : null;
   const counts = Object.fromEntries(ruleIds.map(id => [id, { passed: 0, failed: 0, blocked: 0, reasons: {} }])) as Record<RuleId, RuleCounts>;
   const findings: Finding[] = [];
+  const balances = new Balances();
   let institution: string | null = null;
   let institutionName: string | null = null;
   let institutionStatus: ValidationResult['institutionStatus'] = null;
@@ -195,12 +200,16 @@ export function validate(
         for (const id of dataRules) block(id, unavailable);
       } else if (!check('E05', fields.length === columns.length, location(lineCount), String(fields.length), '16 campos')) {
         for (const id of recordRules) block(id, 'registro');
+        balances.blockFile('registro', { rule: 'E05', line: lineCount });
       } else {
+        const beforeValues = findings.length;
         const value = fields[13];
         validValue = check('E06', /^[0-9]+(\.[0-9]+)?$/.test(value), location(lineCount, 14), value,
           'Dígitos ASCII, com ponto decimal opcional seguido de dígitos') || validValue;
-        check('E07', valueTypes.includes(fields[14]), location(lineCount, 15), fields[14], valueTypes.join(', '));
+        const typeIndex = valueTypes.indexOf(fields[14]);
+        check('E07', typeIndex >= 0, location(lineCount, 15), fields[14], valueTypes.join(', '));
         check('E08', natures.includes(fields[15]), location(lineCount, 16), fields[15], natures.join(', '));
+        const beforeContent = findings.length;
 
         const contentBlocked = contentBlock();
         const account = fields[0];
@@ -212,6 +221,9 @@ export function validate(
           for (const id of contentRules) block(id, contentBlocked ?? 'catálogo');
         }
         let po = false;
+        const pairs: [string, string][] = [];
+        const slots = new Map<string, number>();
+        const repeated: BalanceOrigin[] = [];
         for (let pair = 1; pair <= 6; pair++) {
           const ic = fields[pair * 2 - 1];
           const kind = fields[pair * 2];
@@ -221,6 +233,12 @@ export function validate(
           const complete = check('E10', Boolean(ic && kind), ic ? kindAt : icAt, '', ic ? 'TIPO preenchido' : 'IC preenchido');
           po ||= complete && kind === 'PO';
           if (contentBlocked || !catalog) continue;
+          if (permitted && complete) {
+            const earlier = slots.get(kind);
+            if (earlier === undefined) slots.set(kind, pair);
+            else repeated.push({ line: lineCount, field: 'TIPO repetido: ' + kind, slots: [earlier, pair] });
+            pairs.push([kind, ic]);
+          }
 
           const known = Boolean(kind) && check('C02', Object.hasOwn(catalog.widths, kind), kindAt, kind,
             Object.keys(catalog.widths).join(', '));
@@ -244,6 +262,11 @@ export function validate(
           }
         }
         if (!contentBlocked) check('C05', po, location(lineCount), 'Nenhum par IC/PO completo', 'Pelo menos um par IC/PO completo');
+        if (!contentBlocked) {
+          if (!permitted) balances.blockFile('conta', { rule: 'C01', line: lineCount, field: 'CONTA' });
+          else balances.record(lineCount, account, pairs, findings.slice(beforeContent).map(balanceOrigin).concat(repeated),
+            value, typeIndex, fields[15], findings.slice(beforeValues, beforeContent).map(balanceOrigin));
+        }
       }
     }
     if (line.endByte - lastProgressByte >= 262144) {
@@ -279,17 +302,37 @@ export function validate(
     block('E09', readFault ? 'leitura-incompleta' : !metadataValid ? 'metadados' : 'guia');
   } else check('E09', false, {}, 'Nenhum valor decimal válido em registro com 16 campos', 'Pelo menos um valor válido no arquivo');
 
+  const fileBlock = readFault ? { reason: 'leitura-incompleta', id: readFault === 'bytes' ? 'L01' : 'E01' } as const :
+    !metadataValid ? { reason: 'metadados', id: 'L02' } as const :
+    !headerValid ? { reason: 'guia', id: 'E03' } as const : null;
+  const contentReason = contentBlock();
+  if (fileBlock || contentReason || !records) {
+    const reason = fileBlock?.reason ?? contentReason ?? 'sem-registros';
+    const id = fileBlock?.id ?? (reason === 'competência' ? 'E04' : reason === 'sem-registros' ? 'E09' : 'E02');
+    const origin = findings.find(item => item.id === id);
+    balances.blockFile(reason, origin ? balanceOrigin(origin) : { rule: id }, true);
+  }
+  const balanceResults = balances.finish();
+  for (const group of balanceResults.groups) {
+    if (group.state === 'Bloqueada') {
+      const reasons = new Set(group.blocks.map(item => item.reason));
+      counts[group.id].blocked++;
+      for (const reason of reasons) counts[group.id].reasons[reason] = (counts[group.id].reasons[reason] ?? 0) + 1;
+    } else if (group.state === 'Conforme') counts[group.id].passed++;
+    else if (group.state === 'Falhou') counts[group.id].failed++;
+  }
+
   const results = Object.fromEntries(ruleIds.map(id => {
     const tally = counts[id];
     const state: RuleState = tally.failed ? 'Falhou' : tally.blocked ? 'Bloqueada' : tally.passed ? 'Conforme' : 'Não aplicável';
     return [id, { ...tally, state }];
   })) as ValidationResult['rules'];
 
-  const summary = findings.some(item => item.status === 'Falhou') ? 'Pendências nas verificações do MVP 1' :
+  const summary = ruleIds.some(id => results[id].state === 'Falhou') ? 'Pendências nas verificações do MVP 1.1' :
     ruleIds.some(id => results[id].state === 'Bloqueada') ? 'Verificação incompleta' :
-      'Sem pendências nas verificações executadas do MVP 1';
+      'Sem pendências nas verificações executadas do MVP 1.1';
   return {
     encoding, catalogCompatible: Boolean(catalog), catalogVersion, institution, institutionName,
-    institutionStatus, period, periodKind, records, findings, rules: results, summary,
+    institutionStatus, period, periodKind, records, findings, rules: results, summary, balances: balanceResults,
   };
 }

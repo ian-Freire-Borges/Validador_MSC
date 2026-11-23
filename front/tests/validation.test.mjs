@@ -3,13 +3,13 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import catalog from '../src/catalog-2026.json' with { type: 'json' };
-import { compatibleCatalog, columns, rules } from '../src/catalog.ts';
+import { compatibleCatalog, columns } from '../src/catalog.ts';
 import { parseRecord } from '../src/csv.ts';
 import { sha256 } from '../src/sha256.ts';
-import { validate } from '../src/validation.ts';
+import { validate, validationRules as rules } from '../src/validation.ts';
 
 const makeRow = (fields = {}) => {
-  const defaults = ['111110100', '10131', 'PO', ...Array(10).fill(''), '12.34', 'ending_balance', 'D'];
+  const defaults = ['111110100', '10131', 'PO', ...Array(10).fill(''), '0.00', 'ending_balance', 'D'];
   return defaults.map((value, i) => fields[i + 1] ?? value).join(';');
 };
 const header = columns.join(';');
@@ -17,8 +17,8 @@ const meta = '3550308EX;2026-01';
 const file = (row = makeRow(), { first = meta, second = header, newline = '\n', trailing = false } = {}) =>
   [first, second, ...(Array.isArray(row) ? row : [row])].join(newline) + (trailing ? newline : '');
 const evaluate = (text, selectedCatalog = catalog) => validate(Buffer.from(text), 'UTF-8', selectedCatalog);
-const good = 'Sem pendências nas verificações executadas do MVP 1';
-const bad = 'Pendências nas verificações do MVP 1';
+const good = 'Sem pendências nas verificações executadas do MVP 1.1';
+const bad = 'Pendências nas verificações do MVP 1.1';
 
 function checkFinding(result, id, line, fieldIndex, observed) {
   assert.equal(result.rules[id].state, 'Falhou');
@@ -85,7 +85,9 @@ test('E01: aspas, preservação de campos, controles e quebras físicas', () => 
   assert.deepEqual(parseRecord(' A ;"b;c";"d""e";"";'), { fields: [' A ', 'b;c', 'd"e', '', ''] });
   for (const newline of ['\n', '\r\n']) {
     for (const trailing of [false, true]) {
-      assert.equal(evaluate(file(makeRow({ 14: '"12.34"' }), { newline, trailing })).summary, good);
+      const result = evaluate(file(makeRow({ 14: '"12.34"' }), { newline, trailing }));
+      assert.equal(result.rules.E01.state, 'Conforme');
+      assert.equal(result.rules.E06.state, 'Conforme');
     }
   }
   for (const field of ['"12.34', '1"2', '"12"x', '"12\n34"', '"12\r\n34"', '1\t2', '1\r2', '1\x7f2']) {
@@ -156,7 +158,7 @@ test('E05/E09: registro curto, linha em branco adicional, presença de valor e r
 
 test('E06/E07/E08: magnitude em texto, domínios literais e campos exigidos para zero', () => {
   for (const value of ['0', '0.00', '0001.000', '0000000000000000000000000000000000001.00000000000000000000000']) {
-    assert.equal(evaluate(file(makeRow({ 14: value }))).summary, good);
+    assert.equal(evaluate(file(makeRow({ 14: value }))).rules.E06.state, 'Conforme');
   }
   for (const value of ['-0.00', '+1', '-0', '.', '.5', '1.', '1e3', '1,23', '1.000,50', ' 12.34', '', '１２.３４']) {
     checkFinding(evaluate(file(makeRow({ 14: value }))), 'E06', 3, 14, value);

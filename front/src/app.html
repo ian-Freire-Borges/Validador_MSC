@@ -45,14 +45,14 @@
         <div><dt>Competência no arquivo</dt><dd>{{ report.period === '' ? '(vazia)' : (report.period ?? 'Indisponível') }} @if (report.periodKind) { · {{ report.periodKind }} }</dd></div>
         <div><dt>Codificação utilizada</dt><dd>{{ report.encoding }}</dd></div>
         <div><dt>Registros lidos</dt><dd>{{ report.records }}</dd></div>
-        <div><dt>Achados</dt><dd>{{ report.findings.length }}</dd></div>
+        <div><dt>Achados de estrutura e conteúdo</dt><dd>{{ report.findings.length }}</dd></div>
         <div><dt>Versão do catálogo</dt><dd>{{ report.catalogVersion ?? 'Indisponível' }} @if (!report.catalogCompatible) { · Incompatível ou indisponível }</dd></div>
       </dl>
       <p>Confira a instituição e a competência antes do envio. A pré-validação local não equivale à aprovação do Siconfi.</p>
       <details>
         <summary>Cobertura e limites da pré-validação</summary>
-        <p>O MVP 1 cobre arquivos CSV do Executivo municipal de 2026, com as regras de estrutura e conteúdo listadas abaixo. A competência 2026-13 usa as mesmas verificações ativas.</p>
-        <p><strong>Não coberta:</strong> consistência de saldos e débitos/créditos, domínios FR/CO/FS/ND/NR/AI, adequação do PO à esfera, relação entre dezembro e encerramento, zeramento de contas de resultado, de-para e regras do Ranking.</p>
+        <p>O MVP 1.1 cobre estrutura, conteúdo, consistência e equilíbrio de saldos em CSV do Executivo municipal de 2026. A competência 2026-13 usa as mesmas verificações dentro do arquivo.</p>
+        <p>Ficam fora da cobertura os domínios FR/CO/FS/ND/NR/AI, a adequação do PO à esfera, a relação entre dezembro e encerramento, o zeramento de contas de resultado, o de-para e as regras do Ranking.</p>
         @if (report.institutionStatus === 'outra-esfera') {
           <p>A instituição pertence a outra esfera e está fora da cobertura do perfil.</p>
         } @else if (report.institutionStatus === 'cadastro-inconclusivo') {
@@ -62,9 +62,9 @@
     </section>
 
     <section class="panel" aria-labelledby="achados">
-      <h2 id="achados">Achados</h2>
+      <h2 id="achados">Achados de estrutura e conteúdo</h2>
       @if (report.findings.length === 0) {
-        <p>Nenhum achado localizado. Consulte os estados por regra para conferir a cobertura.</p>
+        <p>Nenhum achado de estrutura e conteúdo. Consulte também a análise de saldos e os estados por regra.</p>
       } @else {
         <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de achados">
           <table>
@@ -87,6 +87,85 @@
           <span aria-live="polite">Página {{ page() }} de {{ pageCount() }}</span>
           <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
         </nav>
+      }
+    </section>
+
+    <section class="panel" aria-labelledby="saldos">
+      <h2 id="saldos">Análise de saldos</h2>
+      <p>Especificação {{ balanceSpecification }}. Fontes oficiais de 2026: <a href="https://siconfi.tesouro.gov.br/siconfi/pages/public/arquivo/conteudo/2026_Regras_de_Validacao_MSC_24112025.pdf#page=5">Regras de Validação, pp. 5–6</a> e <a href="https://siconfi.tesouro.gov.br/siconfi/pages/public/arquivo/conteudo/2026_Anexo_I_Portaria_STN_642_Regras_Gerais_MSC.pdf#page=17">Anexo I, p. 17</a>.</p>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de grupos de saldo">
+        <table>
+          <caption class="sr-only">Resultados normativos de consistência e equilíbrio</caption>
+          <thead><tr><th scope="col">Regra</th><th scope="col">Grupo</th><th scope="col">Estado</th><th scope="col">Valores em reais ou motivo</th><th scope="col">Linhas do grupo</th></tr></thead>
+          <tbody>
+            @for (group of visibleBalances(); track $index) {
+              <tr>
+                <td>{{ group.id }}</td><th scope="row">{{ group.group }}</th><td>{{ group.state }}</td>
+                <td class="observed">
+                  @for (total of group.totals; track total.label) {
+                    <div>{{ total.label }}: {{ total.value }}</div>
+                  }
+                  @for (block of group.blocks; track $index) {
+                    <div>
+                      {{ findingReason(block.reason) }} @if (block.type) { · {{ typeLabel(block.type) }} }
+                      @if (block.origins.count > block.origins.items.length) { · Amostra de {{ block.origins.count }} apontamentos }
+                      <ul>
+                        @for (origin of block.origins.items; track $index) {
+                          <li>
+                            @if (origin.rule) { {{ origin.rule }} }
+                            @if (origin.line !== undefined) { · Linha {{ origin.line }} }
+                            @if (origin.field) { · {{ origin.field }} }
+                            @if (origin.slots) { · Pares {{ origin.slots.join(' e ') }} }
+                          </li>
+                        }
+                      </ul>
+                    </div>
+                  }
+                </td><td>{{ lineText(group.lines) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (balancePageCount() > 1) {
+        <nav aria-label="Paginação de grupos de saldo" class="pagination">
+          <button type="button" class="secondary" (click)="balancePage.set(balancePage() - 1)" [disabled]="balancePage() === 1">Anterior</button>
+          <span aria-live="polite">Página {{ balancePage() }} de {{ balancePageCount() }}</span>
+          <button type="button" class="secondary" (click)="balancePage.set(balancePage() + 1)" [disabled]="balancePage() === balancePageCount()">Próxima</button>
+        </nav>
+      }
+      <h3>Diagnósticos complementares do aplicativo</h3>
+      <p>Alertas por tipo de valor e indicações de repetição são informativos e ficam fora da síntese normativa.</p>
+      @if (report.balances.notices.length === 0) {
+        <p>Nenhum diagnóstico complementar.</p>
+      } @else {
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de diagnósticos complementares">
+          <table>
+            <caption class="sr-only">Alertas e informações que não alteram a síntese</caption>
+            <thead><tr><th scope="col">Diagnóstico</th><th scope="col">Grupo</th><th scope="col">Detalhe</th><th scope="col">Linhas</th></tr></thead>
+            <tbody>
+              @for (notice of visibleNotices(); track $index) {
+                <tr>
+                  <th scope="row">{{ notice.id }} · {{ notice.type ? 'Alerta por tipo de valor' : 'Informação de repetição' }}</th>
+                  <td>{{ notice.group }} @if (notice.type) { · {{ typeLabel(notice.type) }} }</td>
+                  <td class="observed">
+                    @for (total of notice.totals; track total.label) {
+                      <div>{{ total.label }}: {{ total.value }}</div>
+                    }
+                    @if (!notice.type) { {{ notice.lines.count }} ocorrências somadas }
+                  </td><td>{{ lineText(notice.lines) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (noticePageCount() > 1) {
+          <nav aria-label="Paginação dos diagnósticos complementares" class="pagination">
+            <button type="button" class="secondary" (click)="noticePage.set(noticePage() - 1)" [disabled]="noticePage() === 1">Anterior</button>
+            <span aria-live="polite">Página {{ noticePage() }} de {{ noticePageCount() }}</span>
+            <button type="button" class="secondary" (click)="noticePage.set(noticePage() + 1)" [disabled]="noticePage() === noticePageCount()">Próxima</button>
+          </nav>
+        }
       }
     </section>
 
