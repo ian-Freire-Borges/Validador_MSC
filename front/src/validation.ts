@@ -227,7 +227,8 @@ export function validate(
         for (let pair = 1; pair <= 6; pair++) {
           const ic = fields[pair * 2 - 1];
           const kind = fields[pair * 2];
-          if (!ic && !kind) continue;
+          // Alguns exportadores preenchem o TIPO de um par ausente com espaços ASCII.
+          if (ic === '' && !/[^ ]/.test(kind)) continue;
           const icAt = location(lineCount, pair * 2);
           const kindAt = location(lineCount, pair * 2 + 1);
           const complete = check('E10', Boolean(ic && kind), ic ? kindAt : icAt, '', ic ? 'TIPO preenchido' : 'IC preenchido');

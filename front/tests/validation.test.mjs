@@ -170,6 +170,20 @@ test('E06/E07/E08: magnitude em texto, domínios literais e campos exigidos para
   for (const nature of ['d', '']) checkFinding(evaluate(file(makeRow({ 14: '0', 16: nature }))), 'E08', 3, 16, nature);
 });
 
+test('E10/C02: espaços ASCII no TIPO só são ignorados quando o IC está vazio', () => {
+  const absent = evaluate(file(makeRow({ 11: ' ', 13: '"  "' })));
+  assert.equal(absent.summary, good);
+  assert.deepEqual(absent.findings, []);
+
+  const presentIc = evaluate(file(makeRow({ 10: '1234', 11: ' ' })));
+  checkFinding(presentIc, 'C02', 3, 11, ' ');
+  assert.equal(presentIc.rules['SAL-CONS-01'].state, 'Bloqueada');
+
+  const nonAscii = evaluate(file(makeRow({ 11: '\u00a0' })));
+  checkFinding(nonAscii, 'E10', 3, 10, '');
+  checkFinding(nonAscii, 'C02', 3, 11, '\u00a0');
+});
+
 test('E10/C02/C03/C04/C05: pares em posições livres e dependências locais', () => {
   for (let pair = 1; pair <= 6; pair++) {
     const result = evaluate(file(makeRow({ 2: '', 3: '', [pair * 2]: '10131', [pair * 2 + 1]: 'PO' })));
