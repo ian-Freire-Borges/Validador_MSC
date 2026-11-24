@@ -1,6 +1,6 @@
 import { Component, computed, signal } from '@angular/core';
 import type { OnDestroy } from '@angular/core';
-import { HistoryError, HistoryService, pageSize, validateFilters, valueTypes } from './siconfi-history.ts';
+import { HistoryError, historyService, pageSize, validateFilters, valueTypes } from './siconfi-history.ts';
 import type { Filters, HistoryPage } from './siconfi-history.ts';
 
 const primaryFields = [
@@ -15,7 +15,6 @@ const primaryFields = [
   templateUrl: './siconfi-history.html',
 })
 export class SiconfiHistory implements OnDestroy {
-  private readonly history = new HistoryService();
   private request: AbortController | null = null;
   readonly expanded = signal(false);
   readonly busy = signal(false);
@@ -86,7 +85,7 @@ export class SiconfiHistory implements OnDestroy {
     this.busy.set(true);
     this.status.set('Consultando o Siconfi…');
     try {
-      const page = await this.history.load(filters, offset, refresh, request.signal);
+      const page = await historyService.load(filters, offset, refresh, request.signal);
       if (this.request !== request) return;
       this.page.set(page);
       this.status.set(page.rows.length

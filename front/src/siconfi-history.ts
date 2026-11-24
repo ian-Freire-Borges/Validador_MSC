@@ -7,7 +7,7 @@ export const valueTypes = [
 type ValueType = typeof valueTypes[number][0];
 type FilterInput = { entity: string; year: string; month: string; accountClass: string; valueType: string };
 export type Filters = Readonly<Omit<FilterInput, 'valueType'> & { valueType: ValueType }>;
-type Row = Record<string, string | null>;
+export type HistoryRow = Record<string, string | null | undefined>;
 type JsonObject = Record<string, unknown>;
 
 const endpoint = 'https://apidatalake.tesouro.gov.br/ords/cdwhprd/siconfi/tt/';
@@ -51,7 +51,14 @@ export function pageUrl(filters: Filters, offset: number, limit = pageSize): URL
   return url;
 }
 
-export class HistoryError extends Error {}
+export class HistoryError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 function contractError(): never {
   throw new HistoryError('O Siconfi retornou uma resposta em formato inesperado.');
@@ -82,11 +89,11 @@ function isReferenceDate(value: unknown): boolean {
 }
 
 const commonIntegerFields = ['ano_fonte_recursos', 'entrada_msc'];
-const patrimonialIntegerFields = ['financeiro_permanente', 'divida_consolidada'];
+const patrimonialIntegerFields = ['financeiro_permanente'];
 const otherIntegerFields = ['educacao_saude', 'ano_inscricao'];
 const otherTextFields = ['funcao', 'subfuncao', 'natureza_despesa'];
 
-function parseRow(entry: unknown, source: unknown, filters: Filters): Row {
+function parseRow(entry: unknown, source: unknown, filters: Filters): HistoryRow {
   if (!isObject(entry) ||
       !isObject(source) ||
       entry['tipo_valor'] !== filters.valueType || entry['tipo_matriz'] !== 'MSCC' ||
@@ -120,9 +127,15 @@ function parseRow(entry: unknown, source: unknown, filters: Filters): Row {
   const power = entry['poder_orgao'];
   if (power != null && !isSourceInteger(power, source['poder_orgao']) &&
       !(typeof power === 'string' && /^\d+$/.test(power))) return contractError();
+  const debt = entry['divida_consolidada'];
+  if (accountClass <= 4 && debt != null) {
+    const token = source['divida_consolidada'];
+    if (typeof token !== 'string' || !token.length || /[^0-9]/.test(token) ||
+        (typeof debt !== 'string' && !isSourceInteger(debt, token))) return contractError();
+  }
   if (entry['data_referencia'] != null && !isReferenceDate(entry['data_referencia'])) return contractError();
 
-  const row: Row = Object.create(null);
+  const row: HistoryRow = Object.create(null);
   for (const [key, value] of Object.entries(source)) {
     if (value !== null && typeof value !== 'string') return contractError();
     row[key] = value;
@@ -149,7 +162,7 @@ function validateNext(href: string, current: URL, expected: URL): void {
 }
 
 export type HistoryPage = {
-  rows: Row[];
+  rows: HistoryRow[];
   offset: number;
   nextOffset: number | null;
   receivedAt: Date;
@@ -224,13 +237,14 @@ export class HistoryService {
   private retryAt = 0;
   private active: Promise<HistoryPage> | null = null;
 
-  async load(filters: Filters, offset: number, refresh: boolean, signal: AbortSignal): Promise<HistoryPage> {
+  async load(filters: Filters, offset: number, refresh: boolean, signal: AbortSignal, limit = pageSize): Promise<HistoryPage> {
     signal.throwIfAborted();
     const validated = validateFilters(filters);
-    if (typeof validated === 'string' || !Number.isSafeInteger(offset) || offset < 0 || offset % pageSize !== 0) {
+    if (typeof validated === 'string' || !Number.isSafeInteger(limit) || limit < 1 || limit > 5000 ||
+        !Number.isSafeInteger(offset) || offset < 0 || offset % limit !== 0) {
       throw new HistoryError(typeof validated === 'string' ? validated : 'Página inválida.');
     }
-    const url = pageUrl(validated, offset);
+    const url = pageUrl(validated, offset, limit);
     const key = url.href;
     const cached = this.cache.get(key);
     if (!refresh && cached && Date.now() - cached.receivedAt.getTime() < cacheDuration) {
@@ -240,10 +254,10 @@ export class HistoryService {
     }
 
     while (this.active) {
-      await this.active.catch(() => {});
+      await settleOrAbort(this.active, signal);
       signal.throwIfAborted();
     }
-    const task = this.request(url, validated, offset, signal);
+    const task = this.request(url, validated, offset, signal, limit);
     this.active = task;
     try {
       const page = await task;
@@ -260,7 +274,7 @@ export class HistoryService {
     }
   }
 
-  private async request(url: URL, filters: Filters, offset: number, signal: AbortSignal): Promise<HistoryPage> {
+  private async request(url: URL, filters: Filters, offset: number, signal: AbortSignal, limit: number): Promise<HistoryPage> {
     let delay = Math.max(this.lastStart + 1000, this.retryAt) - performance.now();
     while (delay > 0) {
       await wait(Math.min(delay, 2_147_483_647), signal);
@@ -281,7 +295,7 @@ export class HistoryService {
       }
       if (!response.ok) {
         await response.body?.cancel();
-        throw new HistoryError('O Siconfi respondeu com erro HTTP ' + response.status + '.');
+        throw new HistoryError('O Siconfi respondeu com erro HTTP ' + response.status + '.', response.status);
       }
       if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') ?? '')) {
         await response.body?.cancel();
@@ -289,7 +303,7 @@ export class HistoryService {
       }
       const body = await response.text();
       requestSignal.throwIfAborted();
-      return { ...parsePage(body, filters, offset), receivedAt: new Date(), cached: false };
+      return { ...parsePage(body, filters, offset, limit), receivedAt: new Date(), cached: false };
     } catch (error) {
       signal.throwIfAborted();
       if (timeout.signal.aborted) throw new HistoryError('O Siconfi excedeu o prazo de 15 segundos.');
@@ -300,3 +314,18 @@ export class HistoryService {
     }
   }
 }
+
+function settleOrAbort(task: Promise<HistoryPage>, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    signal.throwIfAborted();
+    const abort = () => reject(signal.reason);
+    const settle = () => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    void task.then(settle, settle);
+  });
+}
+
+export const historyService = new HistoryService();

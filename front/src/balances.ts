@@ -1,4 +1,6 @@
 import { valueTypes } from './catalog.ts';
+import { add, decimal, format, negate, zero } from './decimal.ts';
+import type { Decimal } from './decimal.ts';
 import type { BlockReason, Finding, RuleId, RuleState } from './validation.ts';
 
 export const balanceRules = {
@@ -10,38 +12,6 @@ export const valueTypeLabels = ['Saldo inicial', 'Movimentação', 'Saldo final'
 const natureLabels = ['Patrimonial (classes 1–4)', 'Orçamentária (classes 5–6)', 'Controle (classes 7–8)'];
 type BalanceRuleId = keyof typeof balanceRules;
 type Pair = [type: string, code: string];
-type Decimal = { units: bigint; scale: number };
-const zero: Decimal = { units: 0n, scale: 0 };
-
-function decimal(value: string): Decimal {
-  const [whole, fraction = ''] = value.split('.');
-  let scale = fraction.length;
-  while (scale > 0 && fraction[scale - 1] === '0') scale--;
-  return { units: BigInt(whole + fraction.slice(0, scale)), scale };
-}
-
-function add(a: Decimal, b: Decimal): Decimal {
-  if (a.units === 0n) return b;
-  if (b.units === 0n) return a;
-  const scale = Math.max(a.scale, b.scale);
-  return { units: a.units * 10n ** BigInt(scale - a.scale) + b.units * 10n ** BigInt(scale - b.scale), scale };
-}
-
-function negate(value: Decimal): Decimal {
-  return { ...value, units: -value.units };
-}
-
-function format(value: Decimal): string {
-  const { units, scale } = value;
-  if (units === 0n) return '0';
-  const digits = (units < 0n ? -units : units).toString().padStart(scale + 1, '0');
-  let end = digits.length;
-  const point = digits.length - scale;
-  while (end > point && digits[end - 1] === '0') end--;
-  const magnitude = end > point ? digits.slice(0, point) + '.' + digits.slice(point, end) : digits.slice(0, point);
-  return (units < 0n ? '−' : '') + magnitude;
-}
-
 const sampleLimit = 5;
 interface Sample<T> { count: number; items: T[] }
 function sample<T>(): Sample<T> { return { count: 0, items: [] }; }

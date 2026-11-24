@@ -2,6 +2,7 @@ import { ChangeDetectorRef, Component, computed, inject, signal } from '@angular
 import { bootstrapApplication } from '@angular/platform-browser';
 import { validationRules } from './validation.ts';
 import { SiconfiHistory } from './siconfi-history.component.ts';
+import { SiconfiContinuity } from './siconfi-continuity.component.ts';
 import type { OnDestroy } from '@angular/core';
 import type { Encoding } from './csv.ts';
 import type { BlockReason, Finding, ValidationResult } from './validation.ts';
@@ -28,7 +29,7 @@ const reasonLabels: Record<BlockReason, string> = {
 
 @Component({
   selector: 'msc-root',
-  imports: [SiconfiHistory],
+  imports: [SiconfiHistory, SiconfiContinuity],
   templateUrl: './app.html',
   host: { '(window:afterprint)': 'finishPrinting()' },
 })

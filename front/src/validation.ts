@@ -3,6 +3,8 @@ import { decodeLines, parseRecord } from './csv.ts';
 import type { Encoding } from './csv.ts';
 import { balanceOrigin, balanceRules, Balances } from './balances.ts';
 import type { BalanceOrigin } from './balances.ts';
+import { MonthlyBalanceCollector, monthlyCompetence } from './monthly-balances.ts';
+import type { Competence, MonthlyBalances } from './monthly-balances.ts';
 
 export const validationRules = { ...rules, ...balanceRules };
 export type RuleId = keyof typeof validationRules;
@@ -53,6 +55,7 @@ export interface ValidationResult {
   findings: Finding[];
   rules: Record<RuleId, RuleCounts & { state: RuleState }>;
   balances: ReturnType<Balances['finish']>;
+  monthlyBalances: MonthlyBalances | null;
   summary: 'Pendências nas verificações do MVP 1.1' | 'Verificação incompleta' | 'Sem pendências nas verificações executadas do MVP 1.1';
 }
 
@@ -98,6 +101,7 @@ export function validate(
   let metadataValid = false;
   let headerValid = false;
   let validValue = false;
+  let monthly: { competence: Competence; collector: MonthlyBalanceCollector } | null = null;
 
   const check = (id: RuleId, ok: boolean, at: Location, observed: string, expected: string): boolean => {
     if (ok) counts[id].passed++;
@@ -186,6 +190,8 @@ export function validate(
           fields[1], '2026-01 a 2026-13')) {
           periodKind = fields[1] === '2026-13' ? 'Encerramento' : 'Mensal';
         }
+        const competence = institutionStatus === 'municipal' && monthlyCompetence(institution, period);
+        if (catalog && competence) monthly = { competence, collector: new MonthlyBalanceCollector() };
       }
     } else if (lineCount === 2) {
       const different = columns.findIndex((field, index) => field !== fields[index]);
@@ -201,6 +207,7 @@ export function validate(
       } else if (!check('E05', fields.length === columns.length, location(lineCount), String(fields.length), '16 campos')) {
         for (const id of recordRules) block(id, 'registro');
         balances.blockFile('registro', { rule: 'E05', line: lineCount });
+        monthly?.collector.block();
       } else {
         const beforeValues = findings.length;
         const value = fields[13];
@@ -267,6 +274,8 @@ export function validate(
           if (!permitted) balances.blockFile('conta', { rule: 'C01', line: lineCount, field: 'CONTA' });
           else balances.record(lineCount, account, pairs, findings.slice(beforeContent).map(balanceOrigin).concat(repeated),
             value, typeIndex, fields[15], findings.slice(beforeValues, beforeContent).map(balanceOrigin));
+          monthly?.collector.record(account, pairs, fields[14], value, fields[15],
+            Boolean(permitted) && beforeValues === findings.length && repeated.length === 0);
         }
       }
     }
@@ -312,6 +321,7 @@ export function validate(
     const id = fileBlock?.id ?? (reason === 'competência' ? 'E04' : reason === 'sem-registros' ? 'E09' : 'E02');
     const origin = findings.find(item => item.id === id);
     balances.blockFile(reason, origin ? balanceOrigin(origin) : { rule: id }, true);
+    monthly?.collector.block();
   }
   const balanceResults = balances.finish();
   for (const group of balanceResults.groups) {
@@ -335,5 +345,6 @@ export function validate(
   return {
     encoding, catalogCompatible: Boolean(catalog), catalogVersion, institution, institutionName,
     institutionStatus, period, periodKind, records, findings, rules: results, summary, balances: balanceResults,
+    monthlyBalances: monthly?.collector.finish(monthly.competence) ?? null,
   };
 }

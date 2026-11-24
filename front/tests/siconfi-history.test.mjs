@@ -101,6 +101,17 @@ test('valida os tipos e inteiros de origem antes de formatar os registros', () =
   }
 });
 
+test('aceita DC textual ou inteiro e preserva a grafia do código', () => {
+  for (const value of ['001', 1]) {
+    const body = JSON.stringify({ ...envelope, items: [{ ...row, divida_consolidada: value }] });
+    assert.equal(parsePage(body, filters, 0).rows[0].divida_consolidada, String(value));
+  }
+  for (const value of ['DC', '1\n', 1.5, -1]) {
+    const body = JSON.stringify({ ...envelope, items: [{ ...row, divida_consolidada: value }] });
+    assert.throws(() => parsePage(body, filters, 0), /formato inesperado/);
+  }
+});
+
 test('aplica o esquema das dimensões das rotas orçamentária e de controle', () => {
   for (const accountClass of ['5', '7']) {
     const search = { ...filters, accountClass };
@@ -147,6 +158,30 @@ test('serializa os GETs, cancela durante a espera e reutiliza a página válida 
   await service.load(filters, 0, true, signal);
   assert.equal(starts.length, 2);
   assert.ok(starts[1] - starts[0] >= 1000);
+});
+
+test('a mesma fila serializa a consulta histórica e a comparação com limites distintos', async t => {
+  const started = [];
+  let release;
+  t.mock.method(globalThis, 'fetch', async url => {
+    const limit = Number(url.searchParams.get('limit'));
+    started.push({ limit, at: performance.now() });
+    if (limit === 100) await new Promise(resolve => { release = resolve; });
+    return new Response(JSON.stringify({ ...envelope, limit }), { headers: { 'Content-Type': 'application/json' } });
+  });
+  const service = new HistoryService();
+  const { signal } = new AbortController();
+  const first = service.load(filters, 0, true, signal);
+  const canceled = new AbortController();
+  const queued = service.load(filters, 0, true, canceled.signal, 5000);
+  const next = service.load(filters, 0, true, signal, 5000);
+  canceled.abort();
+  await assert.rejects(queued, { name: 'AbortError' });
+  assert.deepEqual(started.map(item => item.limit), [100]);
+  release();
+  await Promise.all([first, next]);
+  assert.deepEqual(started.map(item => item.limit), [100, 5000]);
+  assert.ok(started[1].at - started[0].at >= 1000);
 });
 
 test('distingue HTTP, rede e cancelamento durante um GET', async t => {
