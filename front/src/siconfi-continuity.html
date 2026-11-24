@@ -1,37 +1,39 @@
-<section class="panel" aria-labelledby="siconfi-continuity">
-  <h2 id="siconfi-continuity">Comparação de saldos entre competências</h2>
+<section class="report-section" aria-labelledby="siconfi-continuity">
+  <h3 id="siconfi-continuity">Avisos de saldos entre competências</h3>
   @if (balances()) {
-    <p>Compare os saldos do CSV com as competências vizinhas publicadas no Siconfi. A consulta envia o código do município, os filtros de período, classe e tipo de saldo e o IP da conexão. O CSV e seus valores ficam no navegador.</p>
-    <p>Esta comparação é complementar e seus resultados ficam fora da lista de erros da MSC.</p>
-    <div class="actions">
-      <button type="button" (click)="compare()" [disabled]="busy()">Comparar saldos no Siconfi</button>
-      @if (busy()) {
-        <button type="button" class="secondary" (click)="cancel()">Cancelar comparação</button>
-      }
-    </div>
+    <p class="report-reference">Comparação informativa. <a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
+    @if (busy()) {
+      <button type="button" class="secondary" (click)="cancel()">Cancelar comparação</button>
+    }
     <p role="status" aria-live="polite">{{ status() }}</p>
     @for (result of results(); track result.id) {
-      <section>
-        <h3>{{ result.id === 'anterior' ? directions[0].label : directions[1].label }}</h3>
-        <p><strong>{{ result.state }}</strong> @if (result.state !== 'Não aplicável') { · Referência {{ referenceMonth(result) }} }</p>
+      <section class="report-direction">
+        @let previous = result.id === 'anterior';
+        <h4>{{ previous ? directions[0].label : directions[1].label }}</h4>
+        <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável') { · Referência {{ referenceMonth(result) }} }</p>
         <p>{{ result.message }}</p>
+        @if (result.missingInCsv || result.missingInSiconfi) {
+          <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
+        }
         @if (result.differences.length) {
-          <p>Divergências de saldo <strong>{{ result.divergenceCount }}</strong> · Combinações sem par <strong>{{ result.differences.length - result.divergenceCount }}</strong></p>
           <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'Detalhes da comparação com a competência ' + referenceMonth(result)">
-            <table>
-              <thead><tr><th scope="col">Conta e informações complementares</th><th scope="col">Saldo no CSV</th><th scope="col">Saldo no Siconfi</th><th scope="col">Diferença (CSV − Siconfi)</th></tr></thead>
+            <table class="error-table report-advisories">
+              <caption class="sr-only">Divergências verificadas entre competências</caption>
+              <thead><tr><th scope="col">Tipo de aviso</th><th scope="col">Mensagem</th></tr></thead>
               <tbody>
                 @for (difference of visible(result); track difference.key) {
                   <tr>
-                    <th scope="row">{{ difference.key }}</th>
-                    <td>{{ difference.local ?? 'Sem par' }}</td>
-                    <td>{{ difference.official ?? 'Sem par' }}</td>
-                    <td>{{ difference.difference ?? 'Inconclusiva' }}</td>
+                    <td><span class="error-type report-advisory">Saldo mensal</span></td>
+                    <td>
+                      <strong>Conta {{ difference.key }}</strong>
+                      <div>O saldo {{ previous ? 'inicial' : 'final' }} no CSV de {{ formatCompetence(period()) }} é {{ currency(difference.local) }} e difere do saldo {{ previous ? 'final' : 'inicial' }} no Siconfi de {{ referenceMonth(result) }}, de {{ currency(difference.official) }}. Diferença de {{ currency(difference.difference) }} (CSV menos Siconfi).</div>
+                    </td>
                   </tr>
                 }
               </tbody>
             </table>
           </div>
+          <p>Total de avisos de divergência {{ result.differences.length }}</p>
           @if (pageCount(result) > 1) {
             <nav class="pagination" [attr.aria-label]="'Paginação da comparação com a competência ' + referenceMonth(result)">
               <button type="button" class="secondary" (click)="movePage(result.id, -1)" [disabled]="pages()[result.id] === 1">Anterior</button>

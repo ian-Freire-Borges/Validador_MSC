@@ -1,6 +1,6 @@
-import { ChangeDetectorRef, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { validationRules } from './validation.ts';
+import { currency, findingTitle, formatCompetence } from './report-presentation.ts';
 import { SiconfiHistory } from './siconfi-history.component.ts';
 import { SiconfiContinuity } from './siconfi-continuity.component.ts';
 import type { OnDestroy } from '@angular/core';
@@ -35,6 +35,7 @@ const reasonLabels: Record<BlockReason, string> = {
 })
 class App implements OnDestroy {
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private readonly continuity = viewChild(SiconfiContinuity);
   private worker: Worker | null = null;
   private file: File | null = null;
   readonly fileName = signal('');
@@ -48,7 +49,9 @@ class App implements OnDestroy {
   readonly printing = signal(false);
   readonly findings = computed(() => this.result()?.findings.filter(finding => finding.status === 'Falhou') ?? []);
   readonly hasSourceOfFundsExportError = computed(() => this.findings().some(finding => this.isSourceOfFundsExportError(finding)));
-  readonly ruleInfo = validationRules;
+  readonly currency = currency;
+  readonly findingTitle = findingTitle;
+  readonly formatCompetence = formatCompetence;
   readonly blockedReasons = computed(() => {
     const report = this.result();
     if (!report) return [];
@@ -113,7 +116,7 @@ class App implements OnDestroy {
           this.stop();
           this.progress.set(100);
           this.result.set(data.result);
-          this.status.set('Execução encerrada. ' + data.result.summary + '.');
+          this.status.set('Validação local concluída. ' + data.result.summary + '.');
         } else {
           this.reset('Falha durante a ' + data.stage + '. Selecione Validar para tentar de novo.');
         }
@@ -172,6 +175,7 @@ class App implements OnDestroy {
 
   private reset(status: string): void {
     this.stop();
+    this.continuity()?.reset();
     this.result.set(null);
     this.progress.set(0);
     this.page.set(1);

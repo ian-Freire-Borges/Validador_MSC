@@ -170,6 +170,23 @@ test('E06/E07/E08: magnitude em texto, domínios literais e campos exigidos para
   for (const nature of ['d', '']) checkFinding(evaluate(file(makeRow({ 14: '0', 16: nature }))), 'E08', 3, 16, nature);
 });
 
+test('relaciona falhas de registro à conta literal sem atribuir conta a erros gerais ou truncados', () => {
+  const result = evaluate(file([
+    makeRow({ 6: '*ERRO*', 7: 'FR' }),
+    makeRow({ 1: '001234567', 14: 'inválido' }),
+    '111110200;',
+  ]));
+  const fr = result.findings.find(item => item.id === 'C03');
+  assert.equal(fr.accountCode, '111110100');
+  assert.equal(fr.fieldName, 'IC3');
+  assert.equal(fr.observed, '*ERRO*');
+  assert.equal(result.findings.find(item => item.id === 'E06').accountCode, '001234567');
+  assert.equal(result.findings.find(item => item.id === 'C01').accountCode, '001234567');
+  assert.equal(result.findings.find(item => item.id === 'E05').accountCode, undefined);
+  assert.equal(evaluate(file(makeRow(), { first: '3550308EX;2026-00' }))
+    .findings.find(item => item.id === 'E04').accountCode, undefined);
+});
+
 test('E10/C02: espaços ASCII no TIPO só são ignorados quando o IC está vazio', () => {
   const absent = evaluate(file(makeRow({ 11: ' ', 13: '"  "' })));
   assert.equal(absent.summary, good);

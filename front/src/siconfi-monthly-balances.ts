@@ -13,18 +13,17 @@ export const monthlyDirections = [
 
 export type MonthlyDifference = {
   key: string;
-  local: string | null;
-  official: string | null;
-  difference: string | null;
+  local: string;
+  official: string;
+  difference: string;
 };
+type DirectionDetails = { differences: MonthlyDifference[]; missingInCsv: number; missingInSiconfi: number };
 export type DirectionResult = {
   id: BalanceDirection;
   month: number;
   state: 'Conforme' | 'Divergente' | 'Inconclusiva' | 'Não aplicável';
   message: string;
-  differences: MonthlyDifference[];
-  divergenceCount: number;
-};
+} & DirectionDetails;
 
 const searchLimit = 5000;
 const maximumPages = 60;
@@ -79,21 +78,26 @@ export function normalizeMonthlyRow(row: HistoryRow): MonthlyBalance {
   return { key: balanceKey(account, dimensions), net: signedBalance(magnitude(row.valor), side) };
 }
 
-function compare(localBalances: MonthlyBalance[], officialBalances: Map<string, Decimal>): MonthlyDifference[] {
+function compare(localBalances: MonthlyBalance[], officialBalances: Map<string, Decimal>): DirectionDetails {
   const local = new Map(localBalances.map(balance => [balance.key, balance.net]));
-  const keys = new Set([...local.keys(), ...officialBalances.keys()]);
-  const differences: MonthlyDifference[] = [];
-  for (const key of [...keys].sort()) {
-    const localAmount = local.get(key);
+  const details: DirectionDetails = { differences: [], missingInCsv: 0, missingInSiconfi: 0 };
+  for (const [key, localAmount] of local) {
     const officialAmount = officialBalances.get(key);
-    const difference = localAmount && officialAmount ? add(localAmount, negate(officialAmount)) : null;
-    if (difference?.units === 0n) continue;
-    differences.push({
-      key, local: localAmount ? format(localAmount) : null, official: officialAmount ? format(officialAmount) : null,
-      difference: difference ? format(difference) : null,
+    if (!officialAmount) {
+      details.missingInSiconfi++;
+      continue;
+    }
+    const difference = add(localAmount, negate(officialAmount));
+    if (difference.units === 0n) continue;
+    details.differences.push({
+      key, local: format(localAmount), official: format(officialAmount), difference: format(difference),
     });
   }
-  return differences.sort((left, right) => Number(left.difference === null) - Number(right.difference === null));
+  for (const key of officialBalances.keys()) {
+    if (!local.has(key)) details.missingInCsv++;
+  }
+  details.differences.sort((left, right) => left.key.localeCompare(right.key, 'pt-BR'));
+  return details;
 }
 
 type PageLoader = (filters: Filters, offset: number, refresh: boolean, signal: AbortSignal, limit: number) => Promise<HistoryPage>;
@@ -113,8 +117,9 @@ export async function compareMonthlyBalances(
     signal.throwIfAborted();
     const { id, shift, reference } = direction;
     const month = local.month + shift;
-    const publish = (state: DirectionResult['state'], message: string, differences: MonthlyDifference[] = []) =>
-      onDirection({ id, month, state, message, differences, divergenceCount: differences.filter(item => item.difference !== null).length });
+    const publish = (state: DirectionResult['state'], message: string,
+      details: DirectionDetails = { differences: [], missingInCsv: 0, missingInSiconfi: 0 }) =>
+      onDirection({ id, month, state, message, ...details });
     if (month < 1 || month > 12) {
       publish('Não aplicável', 'A comparação não cruza exercícios nem inclui o encerramento.');
       continue;
@@ -144,14 +149,14 @@ export async function compareMonthlyBalances(
         }
       }
       if (official.size === 0) {
-        publish('Inconclusiva', 'A API retornou zero registros e a ausência de uma matriz publicada não pôde ser confirmada.', compare(local[id].balances, official));
+        publish('Inconclusiva', 'A API retornou zero registros. A ausência de uma matriz publicada não pôde ser confirmada.');
         continue;
       }
-      const differences = compare(local[id].balances, official);
-      if (differences.some(item => item.difference === null)) {
-        publish('Inconclusiva', 'Há chaves sem saldo correspondente. Nenhum valor ausente foi tratado como zero.', differences);
-      } else if (differences.length) {
-        publish('Divergente', 'Foram encontradas diferenças entre os saldos do CSV e os do Siconfi.', differences);
+      const details = compare(local[id].balances, official);
+      if (details.missingInCsv || details.missingInSiconfi) {
+        publish('Inconclusiva', 'Há combinações sem saldo correspondente.', details);
+      } else if (details.differences.length) {
+        publish('Divergente', 'Foram encontradas diferenças entre os saldos do CSV e os do Siconfi.', details);
       } else {
         publish('Conforme', 'Os saldos comparados coincidem.');
       }

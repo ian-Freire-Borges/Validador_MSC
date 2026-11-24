@@ -22,6 +22,7 @@ export interface Finding {
   fieldName?: string;
   pair?: number;
   byteOffset?: number;
+  accountCode?: string;
   observed: string;
   expected: string;
   reason?: BlockReason;
@@ -270,6 +271,9 @@ export function validate(
           }
         }
         if (!contentBlocked) check('C05', po, location(lineCount), 'Nenhum par IC/PO completo', 'Pelo menos um par IC/PO completo');
+        if (account) {
+          for (let index = beforeValues; index < findings.length; index++) findings[index].accountCode = account;
+        }
         if (!contentBlocked) {
           if (!permitted) balances.blockFile('conta', { rule: 'C01', line: lineCount, field: 'CONTA' });
           else balances.record(lineCount, account, pairs, findings.slice(beforeContent).map(balanceOrigin).concat(repeated),

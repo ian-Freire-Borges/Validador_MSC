@@ -8,7 +8,7 @@
 <main id="conteudo" tabindex="-1" class="shell">
   <section class="panel screen-only" aria-labelledby="entrada">
     <h2 id="entrada">Arquivo para validar</h2>
-    <p id="privacidade">O arquivo é processado na memória deste navegador. O conteúdo não é enviado nem salvo pelo aplicativo.</p>
+    <p id="privacidade">O CSV e os saldos ficam neste navegador. Ao clicar em Validar, o aplicativo também consulta dados públicos do Siconfi para arquivos elegíveis de municípios baianos de 2026. O Siconfi recebe o código IBGE, os filtros de ano, mês, classe e tipo de saldo e o IP da conexão.</p>
     <div class="inputs">
       <div>
         <label for="arquivo">Arquivo MSC em CSV</label>
@@ -25,7 +25,7 @@
     </div>
     <p id="orientacao">Se o arquivo estiver em Windows-1252, selecione essa codificação antes de validar.</p>
     <div class="actions">
-      <button type="button" (click)="run()" [disabled]="!fileName() || busy()">Validar</button>
+      <button type="button" aria-describedby="privacidade" (click)="run()" [disabled]="!fileName() || busy()">Validar</button>
       @if (busy()) {
         <button type="button" class="secondary" (click)="cancel()">Cancelar validação</button>
       }
@@ -37,78 +37,98 @@
     }
   </section>
 
-  <msc-siconfi-history class="screen-only" />
-
   @if (result(); as report) {
-    <section class="panel" aria-labelledby="resultado">
-      <h2 id="resultado">{{ report.summary }}</h2>
-      @if (blockedReasons().length) {
-        <p>Verificações não concluídas por {{ blockedReasons().join(' · ') }}.</p>
-      }
-      <p>A pré-validação local não garante aceitação pelo Siconfi.</p>
-    </section>
+    <section class="panel validation-report" aria-labelledby="resultado">
+      <div class="report-heading">
+        <h2 id="resultado">Relatório de pré-validação</h2>
+        <dl class="metadata report-context">
+          <div><dt>Competência</dt><dd>{{ formatCompetence(report.period) }}</dd></div>
+          @if (report.institution) {
+            <div>
+              <dt>Instituição no CSV</dt>
+              <dd><code>{{ report.institution }}</code>@if (report.institutionName) { · {{ report.institutionName }} }</dd>
+            </div>
+          }
+          @if (report.institutionStatus === 'municipal') {
+            <div><dt>Perfil do arquivo</dt><dd>Executivo municipal</dd></div>
+          }
+        </dl>
+        <p class="report-status"><strong>{{ report.summary }}</strong></p>
+        @if (blockedReasons().length) {
+          <p>Verificações não concluídas · {{ blockedReasons().join(' · ') }}.</p>
+        }
+        <p>A pré-validação local não garante aceitação pelo Siconfi.</p>
+      </div>
 
-    @if (errorCount()) {
-      <section class="panel" aria-labelledby="achados">
-        <h2 id="achados">Erros de validação</h2>
-        <ul class="error-legend" role="list" aria-label="Tipos de erro">
-          <li class="error-type error-type-structure">Estrutura</li>
-          <li class="error-type error-type-content">Conteúdo</li>
-        </ul>
-        @if (hasSourceOfFundsExportError()) {
-          <p>A Fonte de Recursos (FR) veio como <code>*ERRO*</code> no CSV. Esse campo precisa de um código de quatro dígitos. Confira o cadastro e o vínculo da fonte no sistema de origem, corrija o problema e exporte a MSC novamente.</p>
-        }
-        <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de erros">
-          <table class="error-table">
-            <caption class="sr-only">Erros da pré-validação da MSC</caption>
-            <thead><tr><th scope="col">Tipo de erro</th><th scope="col">Mensagem</th></tr></thead>
-            <tbody>
-              @for (finding of visible(); track $index) {
-                <tr>
-                  <td>
-                    <span class="error-type" [class.error-type-structure]="category(finding) === 'Estrutura'"
-                          [class.error-type-content]="category(finding) === 'Conteúdo'">{{ category(finding) }}</span>
-                  </td>
-                  <td>
-                    @if (isSourceOfFundsExportError(finding)) {
-                      <strong>Linha {{ finding.line }} — Fonte de Recursos (FR) inválida.</strong>
-                      <div>O arquivo trouxe <code>{{ finding.observed }}</code>, e o campo exige quatro dígitos.</div>
-                      <small>{{ finding.id }} · Campo {{ finding.fieldName }}</small>
-                    } @else {
-                      <strong>{{ describeLocation(finding) }}</strong> · {{ ruleInfo[finding.id][0] }} ({{ finding.id }})
-                      <div class="observed">Observado <code>{{ describeObserved(finding.observed) }}</code>. Esperado <code>{{ finding.expected }}</code>.</div>
-                    }
-                  </td>
-                </tr>
-              }
-              @for (group of visibleBalances(); track $index) {
-                <tr>
-                  <td><span class="error-type error-type-content">Conteúdo</span></td>
-                  <td>
-                    @if (group.lines.count) { <strong>Linhas do grupo {{ lineText(group.lines) }}</strong> · }
-                    {{ ruleInfo[group.id][0] }} ({{ group.id }}) · {{ group.group }}
-                    @for (total of group.totals; track total.label) {
-                      <div>{{ total.label }} {{ total.value }}</div>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-        @if (pageCount() > 1) {
-          <nav aria-label="Paginação da lista de erros" class="pagination screen-only">
-            <button type="button" class="secondary" (click)="movePage(-1)" [disabled]="page() === 1">Anterior</button>
-            <span aria-live="polite">Página {{ page() }} de {{ pageCount() }}</span>
-            <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
-          </nav>
-        }
-        <div class="error-footer">
-          <p><strong>Total de erros {{ errorCount() }}</strong> · Estrutura {{ structureCount() }} · Conteúdo {{ contentCount() }}</p>
-          <button type="button" class="secondary screen-only" (click)="printErrors()" [disabled]="printing()">Imprimir</button>
-        </div>
-      </section>
-    }
-    <msc-siconfi-continuity class="screen-only" [balances]="report.monthlyBalances" [period]="report.period" />
+      @if (errorCount()) {
+        <section class="report-section" aria-labelledby="achados">
+          <h3 id="achados">Erros de validação</h3>
+          <ul class="error-legend" role="list" aria-label="Tipos de erro">
+            <li class="error-type error-type-structure">Estrutura</li>
+            <li class="error-type error-type-content">Conteúdo</li>
+          </ul>
+          @if (hasSourceOfFundsExportError()) {
+            <p class="report-note">A Fonte de Recursos (FR) veio como <code>*ERRO*</code> no CSV. Esse campo precisa de um código de quatro dígitos. Confira o cadastro e o vínculo da fonte no sistema de origem, corrija o problema e exporte a MSC novamente.</p>
+          }
+          <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de erros">
+            <table class="error-table">
+              <caption class="sr-only">Erros da pré-validação da MSC</caption>
+              <thead><tr><th scope="col">Tipo de erro</th><th scope="col">Mensagem</th></tr></thead>
+              <tbody>
+                @for (finding of visible(); track $index) {
+                  <tr>
+                    <td>
+                      <span class="error-type" [class.error-type-structure]="category(finding) === 'Estrutura'"
+                            [class.error-type-content]="category(finding) === 'Conteúdo'">{{ category(finding) }}</span>
+                    </td>
+                    <td>
+                      @if (isSourceOfFundsExportError(finding)) {
+                        <strong>Linha {{ finding.line }} — Fonte de Recursos (FR) inválida.</strong>
+                        <div>O arquivo trouxe <code>{{ finding.observed }}</code>, e o campo exige quatro dígitos.</div>
+                        <small class="report-reference">{{ finding.id }} · Campo {{ finding.fieldName }}</small>
+                      } @else {
+                        <strong>{{ describeLocation(finding) }} — {{ findingTitle(finding.id) }}</strong>
+                        <div class="observed">O arquivo trouxe <code>{{ describeObserved(finding.observed) }}</code>. Esperado <code>{{ finding.expected }}</code>.</div>
+                        <small class="report-reference">{{ finding.id }}</small>
+                      }
+                      @if (finding.accountCode) {
+                        <div class="observed">Conta informada <code>{{ finding.accountCode }}</code></div>
+                      }
+                    </td>
+                  </tr>
+                }
+                @for (group of visibleBalances(); track $index) {
+                  <tr>
+                    <td><span class="error-type error-type-content">Conteúdo</span></td>
+                    <td>
+                      <strong>{{ group.id === 'SAL-CONS-01' ? 'Conta ' : '' }}{{ group.group }} — {{ findingTitle(group.id) }}</strong>
+                      @if (group.id === 'SAL-CONS-01') {
+                        <div>O arquivo trouxe saldo final de {{ currency(group.totals[2].value) }}. O saldo inicial de {{ currency(group.totals[0].value) }} somado à movimentação líquida de {{ currency(group.totals[1].value) }} resulta em {{ currency(group.totals[3].value) }}. Diferença de {{ currency(group.totals[4].value) }}.</div>
+                      } @else {
+                        <div>O arquivo trouxe {{ currency(group.totals[0].value) }} em débitos e {{ currency(group.totals[1].value) }} em créditos. Os totais deveriam coincidir. Diferença de {{ currency(group.totals[2].value) }} (débitos menos créditos).</div>
+                      }
+                      <small class="report-reference">{{ group.id }} @if (group.lines.count) { · Linhas do grupo {{ lineText(group.lines) }} }</small>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          @if (pageCount() > 1) {
+            <nav aria-label="Paginação da lista de erros" class="pagination screen-only">
+              <button type="button" class="secondary" (click)="movePage(-1)" [disabled]="page() === 1">Anterior</button>
+              <span aria-live="polite">Página {{ page() }} de {{ pageCount() }}</span>
+              <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
+            </nav>
+          }
+          <div class="error-footer">
+            <p><strong>Total de erros {{ errorCount() }}</strong> · Estrutura {{ structureCount() }} · Conteúdo {{ contentCount() }}</p>
+            <button type="button" class="secondary screen-only" (click)="printErrors()" [disabled]="printing()">Imprimir</button>
+          </div>
+        </section>
+      }
+      <msc-siconfi-continuity class="screen-only" [balances]="report.monthlyBalances" [period]="report.period" />
+    </section>
   }
+  <msc-siconfi-history class="screen-only" />
 </main>

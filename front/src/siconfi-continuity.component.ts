@@ -4,6 +4,7 @@ import type { BalanceDirection, MonthlyBalances } from './monthly-balances.ts';
 import { historyService } from './siconfi-history.ts';
 import { compareMonthlyBalances, monthlyDirections } from './siconfi-monthly-balances.ts';
 import type { DirectionResult } from './siconfi-monthly-balances.ts';
+import { currency, formatCompetence } from './report-presentation.ts';
 
 @Component({
   selector: 'msc-siconfi-continuity',
@@ -15,14 +16,22 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly period = input.required<string | null>();
   readonly directions = monthlyDirections;
   readonly pageSize = 50;
+  readonly currency = currency;
+  readonly formatCompetence = formatCompetence;
   readonly busy = signal(false);
   readonly status = signal('');
   readonly results = signal<DirectionResult[]>([]);
   readonly pages = signal({ anterior: 1, posterior: 1 });
 
   ngOnChanges(): void {
+    this.reset();
+    void this.compare();
+  }
+
+  reset(): void {
     this.stop();
     this.results.set([]);
+    this.pages.set({ anterior: 1, posterior: 1 });
     this.status.set('');
   }
 
@@ -30,13 +39,11 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
     this.stop();
   }
 
-  async compare(): Promise<void> {
+  private async compare(): Promise<void> {
     const balances = this.balances();
     if (!balances || this.request) return;
     const request = new AbortController();
     this.request = request;
-    this.results.set([]);
-    this.pages.set({ anterior: 1, posterior: 1 });
     this.busy.set(true);
     this.status.set('Consultando as competências vizinhas…');
     try {
@@ -61,15 +68,18 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
       const existing = results.find(result => result.id === id);
       if (existing) return existing;
       const month = balances.month + shift;
-      return month < 1 || month > 12
-        ? { id, month, state: 'Não aplicável', message: 'A comparação não cruza exercícios nem inclui o encerramento.', differences: [], divergenceCount: 0 }
-        : { id, month, state: 'Inconclusiva', message: 'A consulta foi cancelada antes de concluir esta direção.', differences: [], divergenceCount: 0 };
+      const applicable = month >= 1 && month <= 12;
+      return {
+        id, month, state: applicable ? 'Inconclusiva' : 'Não aplicável',
+        message: applicable ? 'A consulta foi cancelada antes de concluir esta direção.' : 'A comparação não cruza exercícios nem inclui o encerramento.',
+        differences: [], missingInCsv: 0, missingInSiconfi: 0,
+      };
     }));
     this.status.set('Comparação cancelada.');
   }
 
   referenceMonth(result: DirectionResult): string {
-    return '2026-' + String(result.month).padStart(2, '0');
+    return formatCompetence('2026-' + String(result.month).padStart(2, '0'));
   }
 
   visible(result: DirectionResult) {

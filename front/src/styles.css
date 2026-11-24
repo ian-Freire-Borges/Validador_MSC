@@ -41,6 +41,22 @@ table { border-collapse: collapse; width: 100%; }
 th, td { border-bottom: 1px solid #cfddd9; text-align: left; vertical-align: top; padding: .55rem .65rem; }
 thead { background: #e5f0ed; }
 tbody tr:nth-child(even) { background: #f6faf9; }
+.validation-report { border-block-start: .3rem solid #075a4e; }
+.report-heading h2 { font-size: clamp(1.35rem, 4vw, 1.75rem); }
+.report-context { margin: 1rem 0; }
+.report-context > div { border-inline-start: .2rem solid #9fbcb4; padding-inline-start: .75rem; }
+.report-context dt, .report-reference { color: #405956; font-size: .875rem; }
+.report-reference { display: block; }
+.report-status { margin-block: 1.15rem .4rem; }
+.report-heading p:not(.report-status) { margin-block: .4rem; }
+.report-section { border-block-start: 1px solid #cfddd9; margin-block-start: 1.3rem; padding-block-start: 1.1rem; }
+.report-section h3, .report-direction h4 { margin-block: 0 .5rem; line-height: 1.3; }
+.report-note { background: #fcf5e7; padding: .65rem .8rem; border-inline-start: .2rem solid #855108; overflow-wrap: anywhere; }
+.report-direction { padding: .7rem .85rem; margin-block: .7rem; border: 1px solid #cfddd9; border-radius: .45rem; }
+.report-direction p { margin-block: .5rem; }
+.report-state { display: inline-block; padding-inline: .45rem; background: #edf3f7; border-radius: .25rem; }
+.report-advisory { color: #325575; }
+.report-advisories thead { background: #edf3f7; }
 .error-legend { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; padding: 0; list-style: none; }
 .error-type { display: inline-flex; align-items: center; gap: .4rem; font-weight: 650; white-space: nowrap; }
 .error-type::before {
@@ -56,6 +72,7 @@ tbody tr:nth-child(even) { background: #f6faf9; }
 .error-type-content::before { transform: rotate(45deg); }
 .error-table :is(th, td) { padding: .38rem .55rem; }
 .error-table th:first-child { width: 8rem; white-space: nowrap; }
+.error-table td:last-child { overflow-wrap: anywhere; }
 .error-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; margin-top: 1rem; }
 .error-footer p { margin: 0; }
 .observed { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 8rem; }

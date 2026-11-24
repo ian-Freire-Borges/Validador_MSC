@@ -58,7 +58,9 @@ test('extrai saldos locais só para BA mensal, distingue ausência e bloqueia a 
 
 test('consulta as oito classes e todas as páginas, soma duplicatas e preserva divergências com chaves sem par', async () => {
   const calls = [];
-  const results = await run(local(), async (filters, offset, refresh, _signal, limit) => {
+  const balances = local();
+  balances.anterior.balances.push({ key: '111110002 · PO 10131', net: decimal('0') });
+  const results = await run(balances, async (filters, offset, refresh, _signal, limit) => {
     calls.push({ ...filters, offset });
     assert.equal(refresh, true);
     assert.equal(limit, 5000);
@@ -77,8 +79,9 @@ test('consulta as oito classes e todas as páginas, soma duplicatas e preserva d
   assert.equal(results[0].state, 'Inconclusiva');
   assert.deepEqual(results[0].differences, [
     { key, local: '1.01', official: '1.1', difference: '−0.09' },
-    { key: '111110001 · PO 10131', local: null, official: '0', difference: null },
   ]);
+  assert.equal(results[0].missingInCsv, 1);
+  assert.equal(results[0].missingInSiconfi, 1);
   assert.equal(results[1].state, 'Conforme');
 });
 
@@ -87,7 +90,8 @@ test('respeita janeiro, dezembro, ausência de publicação e falha parcial', as
   const begin = await run(local(1), async () => page());
   assert.deepEqual(begin.map(result => result.state), ['Não aplicável', 'Inconclusiva']);
   assert.match(begin[1].message, /ausência.*não pôde ser confirmada/);
-  assert.equal(begin[1].differences[0].official, null);
+  assert.deepEqual(begin[1].differences, []);
+  assert.equal(begin[1].missingInCsv + begin[1].missingInSiconfi, 0);
   const end = await run(local(12), async filter => {
     references.push(filter.month);
     return filter.accountClass === '1' ? page([{ ...reference, valor: '2' }]) : page();
