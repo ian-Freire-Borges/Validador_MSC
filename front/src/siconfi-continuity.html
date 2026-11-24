@@ -10,8 +10,12 @@
       <section class="report-direction">
         @let previous = result.id === 'anterior';
         <h4>{{ previous ? directions[0].label : directions[1].label }}</h4>
-        <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável') { · Referência {{ referenceMonth(result) }} }</p>
-        <p>{{ result.message }}</p>
+        <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável' && result.state !== 'Sem referência na API') { · Referência {{ referenceMonth(result) }} }</p>
+        @if (result.state === 'Sem referência na API') {
+          <p>A consulta pública do Siconfi não retornou registros para o saldo de {{ referenceMonth(result) }}.</p>
+        } @else {
+          <p>{{ result.message }}</p>
+        }
         @if (result.missingInCsv || result.missingInSiconfi) {
           <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
         }

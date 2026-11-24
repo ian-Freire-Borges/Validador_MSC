@@ -85,11 +85,10 @@ test('consulta as oito classes e todas as páginas, soma duplicatas e preserva d
   assert.equal(results[1].state, 'Conforme');
 });
 
-test('respeita janeiro, dezembro, ausência de publicação e falha parcial', async () => {
+test('respeita janeiro e dezembro e distingue referência vazia de falha parcial', async () => {
   const references = [];
   const begin = await run(local(1), async () => page());
-  assert.deepEqual(begin.map(result => result.state), ['Não aplicável', 'Inconclusiva']);
-  assert.match(begin[1].message, /ausência.*não pôde ser confirmada/);
+  assert.deepEqual(begin.map(result => result.state), ['Não aplicável', 'Sem referência na API']);
   assert.deepEqual(begin[1].differences, []);
   assert.equal(begin[1].missingInCsv + begin[1].missingInSiconfi, 0);
   const end = await run(local(12), async filter => {

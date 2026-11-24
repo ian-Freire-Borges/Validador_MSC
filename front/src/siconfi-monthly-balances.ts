@@ -21,7 +21,7 @@ type DirectionDetails = { differences: MonthlyDifference[]; missingInCsv: number
 export type DirectionResult = {
   id: BalanceDirection;
   month: number;
-  state: 'Conforme' | 'Divergente' | 'Inconclusiva' | 'Não aplicável';
+  state: 'Conforme' | 'Divergente' | 'Inconclusiva' | 'Não aplicável' | 'Sem referência na API';
   message: string;
 } & DirectionDetails;
 
@@ -149,7 +149,7 @@ export async function compareMonthlyBalances(
         }
       }
       if (official.size === 0) {
-        publish('Inconclusiva', 'A API retornou zero registros. A ausência de uma matriz publicada não pôde ser confirmada.');
+        publish('Sem referência na API', 'A API retornou zero registros.');
         continue;
       }
       const details = compare(local[id].balances, official);
