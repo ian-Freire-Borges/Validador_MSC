@@ -46,3 +46,12 @@ tbody tr:nth-child(even) { background: #f6faf9; }
 .sr-only { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; white-space: nowrap; }
 .skip-link { position: absolute; inset: .5rem auto auto .5rem; translate: 0 -200%; color: #15272a; background: white; padding: .5rem; }
 .skip-link:focus { translate: 0; }
+
+@media print {
+  :root { color: #000; background: #fff; }
+  .screen-only { display: none !important; }
+  main.shell { max-width: none; padding: 0; }
+  .panel { border: 0; padding: 0; }
+  .table-scroll { overflow: visible; }
+  tr { break-inside: avoid; }
+}

@@ -1,4 +1,4 @@
-import { Component, computed, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, computed, inject, signal } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { validationRules } from './validation.ts';
 import { SiconfiHistory } from './siconfi-history.component.ts';
@@ -30,8 +30,10 @@ const reasonLabels: Record<BlockReason, string> = {
   selector: 'msc-root',
   imports: [SiconfiHistory],
   templateUrl: './app.html',
+  host: { '(window:afterprint)': 'finishPrinting()' },
 })
 class App implements OnDestroy {
+  private readonly changeDetector = inject(ChangeDetectorRef);
   private worker: Worker | null = null;
   private file: File | null = null;
   readonly fileName = signal('');
@@ -42,15 +44,11 @@ class App implements OnDestroy {
   readonly result = signal<ValidationResult | null>(null);
   readonly page = signal(1);
   readonly pageSize = 50;
+  readonly printing = signal(false);
   readonly findings = computed(() => this.result()?.findings.filter(finding => finding.status === 'Falhou') ?? []);
   readonly hasSourceOfFundsExportError = computed(() => this.findings().some(finding =>
     finding.id === 'C03' && finding.observed === '*ERRO*' && finding.expected === '4 dígitos ASCII para FR',
   ));
-  readonly pageCount = computed(() => Math.max(1, Math.ceil(this.findings().length / this.pageSize)));
-  readonly visible = computed(() => {
-    const first = (this.page() - 1) * this.pageSize;
-    return this.findings().slice(first, first + this.pageSize);
-  });
   readonly ruleInfo = validationRules;
   readonly blockedReasons = computed(() => {
     const report = this.result();
@@ -58,13 +56,25 @@ class App implements OnDestroy {
     const reasons = Object.values(report.rules).flatMap(rule => Object.keys(rule.reasons) as BlockReason[]);
     return [...new Set(reasons)].map(reason => reasonLabels[reason]);
   });
-  readonly balancePage = signal(1);
   readonly balanceFailures = computed(() => this.result()?.balances.groups.filter(group => group.state === 'Falhou') ?? []);
-  readonly balancePageCount = computed(() => Math.max(1, Math.ceil(this.balanceFailures().length / this.pageSize)));
-  readonly visibleBalances = computed(() => {
-    const first = (this.balancePage() - 1) * this.pageSize;
-    return this.balanceFailures().slice(first, first + this.pageSize);
+  readonly structureCount = computed(() => this.findings().filter(finding => this.category(finding) === 'Estrutura').length);
+  readonly errorCount = computed(() => this.findings().length + this.balanceFailures().length);
+  readonly contentCount = computed(() => this.errorCount() - this.structureCount());
+  readonly pageCount = computed(() => Math.max(1, Math.ceil(this.errorCount() / this.pageSize)));
+  readonly visible = computed(() => {
+    if (this.printing()) return this.findings();
+    const first = (this.page() - 1) * this.pageSize;
+    return this.findings().slice(first, first + this.pageSize);
   });
+  readonly visibleBalances = computed(() => {
+    if (this.printing()) return this.balanceFailures();
+    const first = (this.page() - 1) * this.pageSize - this.findings().length;
+    return this.balanceFailures().slice(Math.max(0, first), Math.max(0, first + this.pageSize));
+  });
+
+  category(finding: Finding): 'Estrutura' | 'Conteúdo' {
+    return finding.id.startsWith('C') ? 'Conteúdo' : 'Estrutura';
+  }
 
   lineText(lines: { count: number; items: number[] }): string {
     if (!lines.count) return '—';
@@ -125,6 +135,17 @@ class App implements OnDestroy {
     this.page.update(page => Math.max(1, Math.min(this.pageCount(), page + change)));
   }
 
+  printErrors(): void {
+    if (!this.errorCount() || this.printing()) return;
+    this.printing.set(true);
+    this.changeDetector.detectChanges();
+    window.print();
+  }
+
+  finishPrinting(): void {
+    this.printing.set(false);
+  }
+
   describeLocation(finding: Finding): string {
     if (finding.byteOffset !== undefined) return 'Linha ' + finding.line + ', byte ' + finding.byteOffset;
     if (finding.line === undefined) return 'Arquivo';
@@ -151,7 +172,7 @@ class App implements OnDestroy {
     this.result.set(null);
     this.progress.set(0);
     this.page.set(1);
-    this.balancePage.set(1);
+    this.finishPrinting();
     this.status.set(status);
   }
 

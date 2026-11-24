@@ -1,12 +1,12 @@
-<a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
-<header>
+<a class="skip-link screen-only" href="#conteudo">Pular para o conteúdo</a>
+<header class="screen-only">
   <div class="shell">
     <h1>Validador MSC </h1>
     <p>Pré-validação de arquivos do Executivo municipal.</p>
   </div>
 </header>
 <main id="conteudo" tabindex="-1" class="shell">
-  <section class="panel" aria-labelledby="entrada">
+  <section class="panel screen-only" aria-labelledby="entrada">
     <h2 id="entrada">Arquivo para validar</h2>
     <p id="privacidade">O arquivo é processado na memória deste navegador. O conteúdo não é enviado nem salvo pelo aplicativo.</p>
     <div class="inputs">
@@ -37,7 +37,7 @@
     }
   </section>
 
-  <msc-siconfi-history />
+  <msc-siconfi-history class="screen-only" />
 
   @if (result(); as report) {
     <section class="panel" aria-labelledby="resultado">
@@ -48,66 +48,53 @@
       <p>A pré-validação local não garante aceitação pelo Siconfi.</p>
     </section>
 
-    @if (findings().length) {
+    @if (errorCount()) {
       <section class="panel" aria-labelledby="achados">
-        <h2 id="achados">Erros de estrutura e conteúdo</h2>
+        <h2 id="achados">Lista de erros</h2>
+        <button type="button" class="secondary screen-only" (click)="printErrors()" [disabled]="printing()">Imprimir</button>
+        <ul aria-label="Quantidade de erros por categoria">
+          @if (structureCount()) { <li>Estrutura ({{ structureCount() }})</li> }
+          @if (contentCount()) { <li>Conteúdo ({{ contentCount() }})</li> }
+        </ul>
         @if (hasSourceOfFundsExportError()) {
           <p>A Fonte de Recursos (FR) veio como <code>*ERRO*</code> no CSV. Esse campo precisa de um código de quatro dígitos. Confira o cadastro e o vínculo da fonte no sistema de origem, corrija o problema e exporte a MSC novamente.</p>
         }
-        <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de erros de estrutura e conteúdo">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de erros">
           <table>
-            <caption class="sr-only">Erros de estrutura e conteúdo</caption>
-            <thead><tr><th scope="col">Regra</th><th scope="col">Localização</th><th scope="col">Observado</th><th scope="col">Esperado</th></tr></thead>
+            <caption class="sr-only">Erros da pré-validação da MSC</caption>
+            <thead><tr><th scope="col">Categoria</th><th scope="col">Mensagem</th></tr></thead>
             <tbody>
               @for (finding of visible(); track $index) {
                 <tr>
-                  <td>{{ finding.id }} · {{ ruleInfo[finding.id][0] }}</td>
-                  <td>{{ describeLocation(finding) }}</td>
-                  <td class="observed">{{ describeObserved(finding.observed) }}</td>
-                  <td>{{ finding.expected }}</td>
+                  <td>{{ category(finding) }}</td>
+                  <td>
+                    <strong>{{ ruleInfo[finding.id][0] }} ({{ finding.id }})</strong>
+                    <div>{{ describeLocation(finding) }}</div>
+                    <div class="observed">Observado <code>{{ describeObserved(finding.observed) }}</code>. Esperado <code>{{ finding.expected }}</code>.</div>
+                  </td>
+                </tr>
+              }
+              @for (group of visibleBalances(); track $index) {
+                <tr>
+                  <td>Conteúdo</td>
+                  <td>
+                    <strong>{{ ruleInfo[group.id][0] }} ({{ group.id }})</strong>
+                    <div>{{ group.group }}</div>
+                    @if (group.lines.count) { <div>Linhas do grupo · {{ lineText(group.lines) }}</div> }
+                    @for (total of group.totals; track total.label) {
+                      <div>{{ total.label }} {{ total.value }}</div>
+                    }
+                  </td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
         @if (pageCount() > 1) {
-          <nav aria-label="Paginação dos erros de estrutura e conteúdo" class="pagination">
+          <nav aria-label="Paginação da lista de erros" class="pagination screen-only">
             <button type="button" class="secondary" (click)="movePage(-1)" [disabled]="page() === 1">Anterior</button>
             <span aria-live="polite">Página {{ page() }} de {{ pageCount() }}</span>
             <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
-          </nav>
-        }
-      </section>
-    }
-
-    @if (balanceFailures().length) {
-      <section class="panel" aria-labelledby="saldos">
-        <h2 id="saldos">Erros de saldo</h2>
-        <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de erros de saldo">
-          <table>
-            <caption class="sr-only">Erros de consistência e equilíbrio dos saldos</caption>
-            <thead><tr><th scope="col">Regra</th><th scope="col">Grupo</th><th scope="col">Valores em reais</th><th scope="col">Linhas do grupo</th></tr></thead>
-            <tbody>
-              @for (group of visibleBalances(); track $index) {
-                <tr>
-                  <td>{{ group.id }} · {{ ruleInfo[group.id][0] }}</td>
-                  <th scope="row">{{ group.group }}</th>
-                  <td class="observed">
-                    @for (total of group.totals; track total.label) {
-                      <div>{{ total.label }} {{ total.value }}</div>
-                    }
-                  </td>
-                  <td>{{ lineText(group.lines) }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-        @if (balancePageCount() > 1) {
-          <nav aria-label="Paginação dos erros de saldo" class="pagination">
-            <button type="button" class="secondary" (click)="balancePage.set(balancePage() - 1)" [disabled]="balancePage() === 1">Anterior</button>
-            <span aria-live="polite">Página {{ balancePage() }} de {{ balancePageCount() }}</span>
-            <button type="button" class="secondary" (click)="balancePage.set(balancePage() + 1)" [disabled]="balancePage() === balancePageCount()">Próxima</button>
           </nav>
         }
       </section>
