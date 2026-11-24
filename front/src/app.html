@@ -51,6 +51,9 @@
     @if (findings().length) {
       <section class="panel" aria-labelledby="achados">
         <h2 id="achados">Erros de estrutura e conteúdo</h2>
+        @if (hasSourceOfFundsExportError()) {
+          <p>A Fonte de Recursos (FR) veio como <code>*ERRO*</code> no CSV. Esse campo precisa de um código de quatro dígitos. Confira o cadastro e o vínculo da fonte no sistema de origem, corrija o problema e exporte a MSC novamente.</p>
+        }
         <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de erros de estrutura e conteúdo">
           <table>
             <caption class="sr-only">Erros de estrutura e conteúdo</caption>

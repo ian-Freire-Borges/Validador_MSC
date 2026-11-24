@@ -43,6 +43,9 @@ class App implements OnDestroy {
   readonly page = signal(1);
   readonly pageSize = 50;
   readonly findings = computed(() => this.result()?.findings.filter(finding => finding.status === 'Falhou') ?? []);
+  readonly hasSourceOfFundsExportError = computed(() => this.findings().some(finding =>
+    finding.id === 'C03' && finding.observed === '*ERRO*' && finding.expected === '4 dígitos ASCII para FR',
+  ));
   readonly pageCount = computed(() => Math.max(1, Math.ceil(this.findings().length / this.pageSize)));
   readonly visible = computed(() => {
     const first = (this.page() - 1) * this.pageSize;
