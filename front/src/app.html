@@ -50,37 +50,37 @@
 
     @if (errorCount()) {
       <section class="panel" aria-labelledby="achados">
-        <h2 id="achados">Lista de erros</h2>
-        <button type="button" class="secondary screen-only" (click)="printErrors()" [disabled]="printing()">Imprimir</button>
-        <ul aria-label="Quantidade de erros por categoria">
-          @if (structureCount()) { <li>Estrutura ({{ structureCount() }})</li> }
-          @if (contentCount()) { <li>Conteúdo ({{ contentCount() }})</li> }
+        <h2 id="achados">Erros de validação</h2>
+        <ul class="error-legend" role="list" aria-label="Tipos de erro">
+          <li class="error-type error-type-structure">Estrutura</li>
+          <li class="error-type error-type-content">Conteúdo</li>
         </ul>
         @if (hasSourceOfFundsExportError()) {
           <p>A Fonte de Recursos (FR) veio como <code>*ERRO*</code> no CSV. Esse campo precisa de um código de quatro dígitos. Confira o cadastro e o vínculo da fonte no sistema de origem, corrija o problema e exporte a MSC novamente.</p>
         }
         <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de erros">
-          <table>
+          <table class="error-table">
             <caption class="sr-only">Erros da pré-validação da MSC</caption>
-            <thead><tr><th scope="col">Categoria</th><th scope="col">Mensagem</th></tr></thead>
+            <thead><tr><th scope="col">Tipo de erro</th><th scope="col">Mensagem</th></tr></thead>
             <tbody>
               @for (finding of visible(); track $index) {
                 <tr>
-                  <td>{{ category(finding) }}</td>
                   <td>
-                    <strong>{{ ruleInfo[finding.id][0] }} ({{ finding.id }})</strong>
-                    <div>{{ describeLocation(finding) }}</div>
+                    <span class="error-type" [class.error-type-structure]="category(finding) === 'Estrutura'"
+                          [class.error-type-content]="category(finding) === 'Conteúdo'">{{ category(finding) }}</span>
+                  </td>
+                  <td>
+                    <strong>{{ describeLocation(finding) }}</strong> · {{ ruleInfo[finding.id][0] }} ({{ finding.id }})
                     <div class="observed">Observado <code>{{ describeObserved(finding.observed) }}</code>. Esperado <code>{{ finding.expected }}</code>.</div>
                   </td>
                 </tr>
               }
               @for (group of visibleBalances(); track $index) {
                 <tr>
-                  <td>Conteúdo</td>
+                  <td><span class="error-type error-type-content">Conteúdo</span></td>
                   <td>
-                    <strong>{{ ruleInfo[group.id][0] }} ({{ group.id }})</strong>
-                    <div>{{ group.group }}</div>
-                    @if (group.lines.count) { <div>Linhas do grupo · {{ lineText(group.lines) }}</div> }
+                    @if (group.lines.count) { <strong>Linhas do grupo {{ lineText(group.lines) }}</strong> · }
+                    {{ ruleInfo[group.id][0] }} ({{ group.id }}) · {{ group.group }}
                     @for (total of group.totals; track total.label) {
                       <div>{{ total.label }} {{ total.value }}</div>
                     }
@@ -97,6 +97,10 @@
             <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
           </nav>
         }
+        <div class="error-footer">
+          <p><strong>Total de erros {{ errorCount() }}</strong> · Estrutura {{ structureCount() }} · Conteúdo {{ contentCount() }}</p>
+          <button type="button" class="secondary screen-only" (click)="printErrors()" [disabled]="printing()">Imprimir</button>
+        </div>
       </section>
     }
   }
