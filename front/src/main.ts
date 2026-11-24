@@ -46,9 +46,7 @@ class App implements OnDestroy {
   readonly pageSize = 50;
   readonly printing = signal(false);
   readonly findings = computed(() => this.result()?.findings.filter(finding => finding.status === 'Falhou') ?? []);
-  readonly hasSourceOfFundsExportError = computed(() => this.findings().some(finding =>
-    finding.id === 'C03' && finding.observed === '*ERRO*' && finding.expected === '4 dígitos ASCII para FR',
-  ));
+  readonly hasSourceOfFundsExportError = computed(() => this.findings().some(finding => this.isSourceOfFundsExportError(finding)));
   readonly ruleInfo = validationRules;
   readonly blockedReasons = computed(() => {
     const report = this.result();
@@ -74,6 +72,10 @@ class App implements OnDestroy {
 
   category(finding: Finding): 'Estrutura' | 'Conteúdo' {
     return finding.id.startsWith('C') ? 'Conteúdo' : 'Estrutura';
+  }
+
+  isSourceOfFundsExportError(finding: Finding): boolean {
+    return finding.id === 'C03' && finding.observed === '*ERRO*' && finding.expected === '4 dígitos ASCII para FR';
   }
 
   lineText(lines: { count: number; items: number[] }): string {

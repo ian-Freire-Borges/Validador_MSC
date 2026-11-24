@@ -70,8 +70,14 @@
                           [class.error-type-content]="category(finding) === 'Conteúdo'">{{ category(finding) }}</span>
                   </td>
                   <td>
-                    <strong>{{ describeLocation(finding) }}</strong> · {{ ruleInfo[finding.id][0] }} ({{ finding.id }})
-                    <div class="observed">Observado <code>{{ describeObserved(finding.observed) }}</code>. Esperado <code>{{ finding.expected }}</code>.</div>
+                    @if (isSourceOfFundsExportError(finding)) {
+                      <strong>Linha {{ finding.line }} — Fonte de Recursos (FR) inválida.</strong>
+                      <div>O arquivo trouxe <code>{{ finding.observed }}</code>, e o campo exige quatro dígitos.</div>
+                      <small>{{ finding.id }} · Campo {{ finding.fieldName }}</small>
+                    } @else {
+                      <strong>{{ describeLocation(finding) }}</strong> · {{ ruleInfo[finding.id][0] }} ({{ finding.id }})
+                      <div class="observed">Observado <code>{{ describeObserved(finding.observed) }}</code>. Esperado <code>{{ finding.expected }}</code>.</div>
+                    }
                   </td>
                 </tr>
               }
