@@ -1,12 +1,10 @@
 import { Component, computed, signal } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { valueTypes } from './catalog.ts';
-import { balanceSpecification, valueTypeLabels } from './balances.ts';
 import { validationRules } from './validation.ts';
 import { SiconfiHistory } from './siconfi-history.component.ts';
 import type { OnDestroy } from '@angular/core';
 import type { Encoding } from './csv.ts';
-import type { BlockReason, Finding, RuleId, ValidationResult } from './validation.ts';
+import type { BlockReason, Finding, ValidationResult } from './validation.ts';
 import type { ValidationRequest, WorkerMessage } from './validation.worker.ts';
 
 const reasonLabels: Record<BlockReason, string> = {
@@ -42,33 +40,28 @@ class App implements OnDestroy {
   readonly status = signal('Selecione um arquivo CSV.');
   readonly progress = signal(0);
   readonly result = signal<ValidationResult | null>(null);
-  readonly timing = signal<{ readMs: number; analysisMs: number } | null>(null);
   readonly page = signal(1);
   readonly pageSize = 50;
-  readonly pageCount = computed(() => Math.max(1, Math.ceil((this.result()?.findings.length ?? 0) / this.pageSize)));
+  readonly findings = computed(() => this.result()?.findings.filter(finding => finding.status === 'Falhou') ?? []);
+  readonly pageCount = computed(() => Math.max(1, Math.ceil(this.findings().length / this.pageSize)));
   readonly visible = computed(() => {
     const first = (this.page() - 1) * this.pageSize;
-    return this.result()?.findings.slice(first, first + this.pageSize) ?? [];
+    return this.findings().slice(first, first + this.pageSize);
   });
-  readonly ruleIds = Object.keys(validationRules) as RuleId[];
   readonly ruleInfo = validationRules;
-  readonly balanceSpecification = balanceSpecification;
+  readonly blockedReasons = computed(() => {
+    const report = this.result();
+    if (!report) return [];
+    const reasons = Object.values(report.rules).flatMap(rule => Object.keys(rule.reasons) as BlockReason[]);
+    return [...new Set(reasons)].map(reason => reasonLabels[reason]);
+  });
   readonly balancePage = signal(1);
-  readonly noticePage = signal(1);
-  readonly balancePageCount = computed(() => Math.max(1, Math.ceil((this.result()?.balances.groups.length ?? 0) / this.pageSize)));
-  readonly noticePageCount = computed(() => Math.max(1, Math.ceil((this.result()?.balances.notices.length ?? 0) / this.pageSize)));
+  readonly balanceFailures = computed(() => this.result()?.balances.groups.filter(group => group.state === 'Falhou') ?? []);
+  readonly balancePageCount = computed(() => Math.max(1, Math.ceil(this.balanceFailures().length / this.pageSize)));
   readonly visibleBalances = computed(() => {
     const first = (this.balancePage() - 1) * this.pageSize;
-    return this.result()?.balances.groups.slice(first, first + this.pageSize) ?? [];
+    return this.balanceFailures().slice(first, first + this.pageSize);
   });
-  readonly visibleNotices = computed(() => {
-    const first = (this.noticePage() - 1) * this.pageSize;
-    return this.result()?.balances.notices.slice(first, first + this.pageSize) ?? [];
-  });
-
-  typeLabel(type: string): string {
-    return valueTypeLabels[valueTypes.indexOf(type)];
-  }
 
   lineText(lines: { count: number; items: number[] }): string {
     if (!lines.count) return '—';
@@ -104,7 +97,6 @@ class App implements OnDestroy {
           this.stop();
           this.progress.set(100);
           this.result.set(data.result);
-          this.timing.set(data.timing);
           this.status.set('Execução encerrada. ' + data.result.summary + '.');
         } else {
           this.reset('Falha durante a ' + data.stage + '. Selecione Validar para tentar de novo.');
@@ -141,13 +133,10 @@ class App implements OnDestroy {
     ].filter(Boolean).join(', ');
   }
 
-  reasonText(reasons: Partial<Record<BlockReason, number>>): string {
-    return (Object.entries(reasons) as [BlockReason, number][])
-      .map(([reason, count]) => reasonLabels[reason] + ' (' + count + ')').join(' · ');
-  }
-
-  findingReason(reason: BlockReason): string {
-    return reasonLabels[reason];
+  describeObserved(value: string): string {
+    if (value === '') return '(vazio)';
+    if (value.trim() === '') return '(somente espaços em branco)';
+    return value;
   }
 
   ngOnDestroy(): void {
@@ -157,11 +146,9 @@ class App implements OnDestroy {
   private reset(status: string): void {
     this.stop();
     this.result.set(null);
-    this.timing.set(null);
     this.progress.set(0);
     this.page.set(1);
     this.balancePage.set(1);
-    this.noticePage.set(1);
     this.status.set(status);
   }
 
