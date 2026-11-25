@@ -82,8 +82,9 @@ Antes de revisar, consulte os documentos pertinentes:
 - Arquivos modificados e respectivos diffs.
 - Testes existentes relacionados à alteração.
 
-Se o parecer estiver ausente ou cobrir outro diff, devolva a tarefa ao Orquestrador para confirmar a aplicabilidade da evidência ou encaminhar a rechecagem.
 - Referências oficiais aplicáveis em `references/msc/`.
+
+Inicie a revisão ao receber a candidata identificada e os critérios de aceite. O Reviewer não espera o parecer do QA e não consulta as conclusões do QA antes de emitir seu parecer inicial. Se faltar a identificação da candidata ou houver divergência no diff recebido, solicite ao Orquestrador a confirmação da versão.
 
 Não releia todo o repositório indiscriminadamente.
 
