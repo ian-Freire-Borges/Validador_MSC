@@ -108,6 +108,74 @@ test('mostra a falha de FR e a conta da própria linha na aba Resultado', async 
   expect(calls).toHaveLength(0);
 });
 
+test('cancela a validação local em andamento e permite validar novamente', async ({ page, context, baseURL }) => {
+  await mockSiconfi(context, baseURL, () => []);
+  const workerAsset = /\/worker-[\w-]+\.js$/;
+  const readBarrierChannel = 'msc-validation-read-barrier';
+  let workerLoads = 0;
+  await context.route(url => url.origin === baseURL && workerAsset.test(url.pathname), async route => {
+    if (++workerLoads > 1) {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    await route.fulfill({ response, body: `
+      {
+        const barrier = new BroadcastChannel(${JSON.stringify(readBarrierChannel)});
+        const read = Blob.prototype.arrayBuffer;
+        Blob.prototype.arrayBuffer = async function () {
+          const released = new Promise(resolve => barrier.addEventListener('message', resolve, { once: true }));
+          barrier.postMessage('reading');
+          await released;
+          barrier.close();
+          return read.call(this);
+        };
+      }
+      ${await response.text()}
+    ` });
+  });
+  await page.addInitScript(channelName => {
+    const barrier = new BroadcastChannel(channelName);
+    barrier.addEventListener('message', event => { window.validationReadStarted = event.data === 'reading'; });
+    window.releaseValidationRead = () => {
+      barrier.postMessage('release');
+      barrier.close();
+    };
+  }, readBarrierChannel);
+
+  const validate = page.getByRole('button', { name: 'Validar', exact: true });
+  const cancel = page.getByRole('button', { name: 'Cancelar validação' });
+  const progress = page.getByRole('progressbar', { name: 'Progresso da validação' });
+  const status = page.getByRole('region', { name: 'Arquivo para validar' }).getByRole('status');
+  const report = page.getByRole('region', { name: 'Relatório de pré-validação' });
+  const workerStarted = page.waitForEvent('worker', worker => workerAsset.test(new URL(worker.url()).pathname));
+  await validateFile(page, '3550308EX', balances);
+  const worker = await workerStarted;
+  await page.waitForFunction(() => window.validationReadStarted === true);
+  await expect(cancel).toBeEnabled();
+  await expect(validate).toBeDisabled();
+  await expect(progress).toBeVisible();
+  await expect(status).toHaveText('Lendo o arquivo.');
+  await expect(report).toHaveCount(0);
+
+  const workerClosed = worker.waitForEvent('close');
+  await cancel.click();
+  await workerClosed;
+  await expect(cancel).toHaveCount(0);
+  await expect(progress).toHaveCount(0);
+  await expect(validate).toBeEnabled();
+
+  await page.evaluate(() => window.releaseValidationRead());
+  await expect(status).toHaveText('Validação cancelada.');
+  await expect(report).toHaveCount(0);
+
+  await validate.click();
+  await expect(status).toHaveText('Pré-validação local concluída.');
+  await expect(report.getByText('Sem erros nas verificações executadas')).toBeVisible();
+  await expect(report.getByText('3550308EX', { exact: true })).toBeVisible();
+  expect(workerLoads).toBe(2);
+});
+
 test('consulta automaticamente e mantém a divergência do mês anterior apenas em Avisos', async ({ page, context, baseURL }) => {
   const calls = [];
   await mockSiconfi(context, baseURL, filters => {
