@@ -108,6 +108,35 @@ test('mostra a falha de FR e a conta da própria linha na aba Resultado', async 
   expect(calls).toHaveLength(0);
 });
 
+test('mostra consistência e equilíbrio patrimonial na aba Resultado', async ({ page, context, baseURL }) => {
+  const calls = [];
+  await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
+  await validateFile(page, '3550308EX', [
+    row(debitAccount, '10', 'beginning_balance', 'D'),
+    row(debitAccount, '15', 'period_change', 'C'),
+    row(debitAccount, '6', 'ending_balance', 'D'),
+  ]);
+
+  const result = page.getByRole('tabpanel', { name: 'Resultado' });
+  await expect(result.getByText('Erros na pré-validação', { exact: true })).toBeVisible();
+  await expect(result.getByText('Total de erros 2 · Estrutura 0 · Conteúdo 2', { exact: true })).toBeVisible();
+  const table = result.getByRole('table', { name: 'Erros da pré-validação da MSC' });
+  const errors = table.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Conteúdo', exact: true }) });
+  await expect(errors).toHaveCount(2);
+  await expect(table.getByRole('cell', { name: 'Estrutura', exact: true })).toHaveCount(0);
+
+  const consistency = errors.filter({ hasText: 'SAL-CONS-01' });
+  await expect(consistency).toContainText('Conta 111110100 · PO 10131');
+  await expect(consistency).toContainText('O arquivo trouxe saldo final de R$ 6. O saldo inicial de R$ 10 somado à movimentação líquida de R$ −15 resulta em R$ −5. Diferença de R$ 11.');
+  await expect(consistency).toContainText('SAL-CONS-01 · Linhas do grupo 3, 4, 5');
+
+  const equilibrium = errors.filter({ hasText: 'SAL-EQU-01' });
+  await expect(equilibrium).toContainText('Patrimonial (classes 1–4)');
+  await expect(equilibrium).toContainText('O arquivo trouxe R$ 16 em débitos e R$ 15 em créditos. Os totais deveriam coincidir. Diferença de R$ 1 (débitos menos créditos).');
+  await expect(equilibrium).toContainText('SAL-EQU-01 · Linhas do grupo 3, 4, 5');
+  expect(calls).toHaveLength(0);
+});
+
 test('cancela a validação local em andamento e permite validar novamente', async ({ page, context, baseURL }) => {
   await mockSiconfi(context, baseURL, () => []);
   const workerAsset = /\/worker-[\w-]+\.js$/;
