@@ -60,6 +60,16 @@ const balances = [[debitAccount, 'D'], [creditAccount, 'C']].flatMap(([account, 
   row(account, '100.00', 'ending_balance', side),
 ]);
 
+function previousReference(filters) {
+  if (filters.get('me_referencia') !== '9' || filters.get('classe_conta') !== '1') return [];
+  const common = { cod_ibge: 2914604, exercicio: 2026, mes_referencia: 9, classe_conta: 1,
+    tipo_matriz: 'MSCC', tipo_valor: 'ending_balance', poder_orgao: powerCode };
+  return [
+    { ...common, conta_contabil: debitAccount, valor: 99, natureza_conta: 'D' },
+    { ...common, conta_contabil: creditAccount, valor: 100, natureza_conta: 'C' },
+  ];
+}
+
 test('mostra a falha de FR e a conta da própria linha na aba Resultado', async ({ page, context, baseURL }) => {
   const calls = [];
   await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
@@ -91,13 +101,7 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
     expect(filters.get('limit')).toBe('5000');
     expect(filters.get('offset')).toBe('0');
     calls.push({ month, accountClass, valueType });
-    if (month !== 9 || accountClass !== 1) return [];
-    const common = { cod_ibge: 2914604, exercicio: 2026, mes_referencia: month, classe_conta: accountClass,
-      tipo_matriz: 'MSCC', tipo_valor: valueType, poder_orgao: powerCode };
-    return [
-      { ...common, conta_contabil: debitAccount, valor: 99, natureza_conta: 'D' },
-      { ...common, conta_contabil: creditAccount, valor: 100, natureza_conta: 'C' },
-    ];
+    return previousReference(filters);
   });
   await validateFile(page, '2914604EX', balances);
 
@@ -173,15 +177,8 @@ test('cancela a consulta Siconfi do CSV substituído e descarta a resposta tardi
     }
     intercepted.resolve(route.request().url());
     await releaseResponse.promise;
-    const reference = {
-      cod_ibge: 2914604, exercicio: 2026, mes_referencia: 9, classe_conta: 1,
-      tipo_matriz: 'MSCC', tipo_valor: 'ending_balance', poder_orgao: powerCode,
-    };
     try {
-      await fulfillSiconfi(route, baseURL, [
-        { ...reference, conta_contabil: debitAccount, valor: 99, natureza_conta: 'D' },
-        { ...reference, conta_contabil: creditAccount, valor: 100, natureza_conta: 'C' },
-      ]);
+      await fulfillSiconfi(route, baseURL, previousReference(filters));
     } finally {
       responseHandled.resolve();
     }
@@ -214,4 +211,47 @@ test('cancela a consulta Siconfi do CSV substituído e descarta a resposta tardi
   await expect(notices.getByText(/Disponível para arquivos mensais de 2026 de municípios baianos/)).toBeVisible();
   await expect(notices.getByText(/Divergência confirmada|setembro de 2026|Consultando as competências vizinhas/)).toHaveCount(0);
   expect(calls).toEqual(['2914604']);
+});
+
+test('prepara todos os erros para impressão, exclui Avisos e restaura aba e página', async ({ page, context, baseURL }) => {
+  await mockSiconfi(context, baseURL, previousReference);
+  const invalidRows = Array.from({ length: 53 }, () => row(debitAccount, '0.00', 'period_change', 'D', '*ERRO*'));
+  const expectedErrors = invalidRows.map((_, index) => `Linha ${3 + balances.length + index} — Fonte de Recursos (FR) inválida.`);
+  await validateFile(page, '2914604EX', [...balances, ...invalidRows]);
+
+  const resultTab = page.getByRole('tab', { name: 'Resultado' });
+  const noticesTab = page.getByRole('tab', { name: 'Avisos' });
+  const result = page.getByRole('tabpanel', { name: 'Resultado' });
+  const notices = page.getByRole('tabpanel', { name: 'Avisos', includeHidden: true });
+  const errorTable = result.getByRole('table', { name: 'Erros da pré-validação da MSC' });
+  const errorRows = errorTable.getByRole('row').filter({ hasNot: page.getByRole('columnheader') });
+  const errorLabels = errorRows.getByText(/^Linha \d+ — Fonte de Recursos/);
+  const pagination = result.getByRole('navigation', { name: 'Paginação da lista de erros' });
+  await expect(errorLabels).toHaveText(expectedErrors.slice(0, 50));
+  await pagination.getByRole('button', { name: 'Próxima' }).click();
+  await expect(pagination).toContainText('Página 2 de 2');
+  await expect(errorLabels).toHaveText(expectedErrors.slice(50));
+  await noticesTab.click();
+  const divergence = page.getByText('Divergência confirmada', { exact: true });
+  await expect(divergence).toBeVisible({ timeout: 20_000 });
+
+  await page.emulateMedia({ media: 'print' });
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+  await expect(result).toBeVisible();
+  await expect(errorRows).toHaveCount(expectedErrors.length);
+  await expect(errorLabels).toHaveText(expectedErrors);
+  for (const index of [0, 49, 50, 52]) await expect(errorLabels.nth(index)).toBeVisible();
+  await expect(result.getByText('Total de erros 53', { exact: true })).toBeVisible();
+  await expect(pagination).toBeHidden();
+  await expect(notices).toBeHidden();
+  await expect(divergence).toBeHidden();
+
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  await page.emulateMedia({ media: 'screen' });
+  await expect(noticesTab).toHaveAttribute('aria-selected', 'true');
+  await expect(divergence).toBeVisible();
+  await expect(result).toBeHidden();
+  await resultTab.click();
+  await expect(pagination).toContainText('Página 2 de 2');
+  await expect(errorLabels).toHaveText(expectedErrors.slice(50));
 });
