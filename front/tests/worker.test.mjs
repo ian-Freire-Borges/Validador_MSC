@@ -32,7 +32,7 @@ async function runWorker(t, file, failure) {
 
   const events = on(worker, 'message', { signal: t.signal, close: ['exit'] });
   const messages = [];
-  worker.postMessage({ file, encoding: 'UTF-8' });
+  worker.postMessage({ file });
   for await (const [event] of events) {
     if (event.callbackFinished) return messages;
     messages.push(event.message);
@@ -49,7 +49,6 @@ test('Worker carrega o catálogo, publica progresso e retorna a validação', op
   const { result } = messages.at(-1);
   assert.equal(result.records, 2);
   assert.equal(result.catalogCompatible, true);
-  assert.equal(result.encoding, 'UTF-8');
   assert.equal(result.summary, 'Sem pendências nas verificações executadas do MVP 1.1');
   assert.equal(result.findings.length, 0);
   assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
@@ -79,4 +78,5 @@ test('Worker conclui a validação de UTF-8 inválido com achado L01', options, 
   assert.equal(finding?.status, 'Falhou');
   assert.equal(finding.byteOffset, 0);
   assert.equal(finding.observed, '0x80');
+  assert.match(finding.expected, /Reexporte o CSV em UTF-8/);
 });

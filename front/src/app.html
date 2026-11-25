@@ -8,22 +8,10 @@
 <main id="conteudo" tabindex="-1" class="shell">
   <section class="panel screen-only" aria-labelledby="entrada">
     <h2 id="entrada">Arquivo para validar</h2>
-    <p id="privacidade">O CSV e os saldos ficam neste navegador. Ao clicar em Validar, o aplicativo também consulta dados públicos do Siconfi para arquivos elegíveis de municípios baianos de 2026. O Siconfi recebe o código IBGE, os filtros de ano, mês, classe e tipo de saldo e o IP da conexão.</p>
-    <div class="inputs">
-      <div>
-        <label for="arquivo">Arquivo MSC em CSV</label>
-        <input id="arquivo" type="file" accept=".csv,text/csv" #fileInput
-               aria-describedby="privacidade" (change)="selectFile(fileInput.files)">
-      </div>
-      <div>
-        <label for="codificacao">Codificação</label>
-        <select id="codificacao" #encodingInput [value]="encoding()" (change)="selectEncoding(encodingInput.value)" aria-describedby="orientacao">
-          <option value="UTF-8">UTF-8</option>
-          <option value="Windows-1252">Windows-1252</option>
-        </select>
-      </div>
-    </div>
-    <p id="orientacao">Se o arquivo estiver em Windows-1252, selecione essa codificação antes de validar.</p>
+    <p id="privacidade">Use um arquivo CSV em UTF-8. O CSV e os saldos ficam neste navegador. Ao clicar em Validar, o aplicativo também consulta dados públicos do Siconfi para arquivos elegíveis de municípios baianos de 2026. O Siconfi recebe o código IBGE, os filtros de ano, mês, classe e tipo de saldo e o IP da conexão.</p>
+    <label for="arquivo">Arquivo MSC em CSV</label>
+    <input id="arquivo" type="file" accept=".csv,text/csv" #fileInput
+           aria-describedby="privacidade" (change)="selectFile(fileInput.files)">
     <div class="actions">
       <button type="button" aria-describedby="privacidade" (click)="run()" [disabled]="!fileName() || busy()">Validar</button>
       @if (busy()) {
@@ -150,5 +138,4 @@
       </div>
     </section>
   }
-  <msc-siconfi-history class="screen-only" />
 </main>

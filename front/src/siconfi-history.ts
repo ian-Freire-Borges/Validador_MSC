@@ -1,10 +1,6 @@
-export const valueTypes = [
-  ['beginning_balance', 'Saldo inicial'],
-  ['ending_balance', 'Saldo final'],
-  ['period_change', 'Movimento do período'],
-] as const;
+const valueTypes = ['beginning_balance', 'ending_balance', 'period_change'] as const;
 
-type ValueType = typeof valueTypes[number][0];
+type ValueType = typeof valueTypes[number];
 type FilterInput = { entity: string; year: string; month: string; accountClass: string; valueType: string };
 export type Filters = Readonly<Omit<FilterInput, 'valueType'> & { valueType: ValueType }>;
 export type HistoryRow = Record<string, string | null | undefined>;
@@ -16,8 +12,6 @@ const linkOrigins = new Set([
   // O ORDS anuncia este host nos links. As requisições usam sempre o endereço público.
   'https://host-5hrds-scan.prosubnet.vcndados.oraclevcn.com',
 ]);
-export const pageSize = 100;
-const cacheDuration = 5 * 60_000;
 
 export function validateFilters(input: FilterInput, year = new Date().getFullYear()): Filters | string {
   const entity = input.entity.trim();
@@ -29,12 +23,12 @@ export function validateFilters(input: FilterInput, year = new Date().getFullYea
   }
   if (!/^(?:[1-9]|1[0-2])$/.test(input.month)) return 'Selecione um mês de 1 a 12.';
   if (!/^[1-8]$/.test(input.accountClass)) return 'Selecione uma classe de 1 a 8.';
-  const valueType = valueTypes.find(([id]) => id === input.valueType)?.[0];
+  const valueType = valueTypes.find(id => id === input.valueType);
   if (!valueType) return 'Selecione um tipo de valor.';
   return { ...input, entity, valueType };
 }
 
-export function pageUrl(filters: Filters, offset: number, limit = pageSize): URL {
+export function pageUrl(filters: Filters, offset: number, limit: number): URL {
   const accountClass = Number(filters.accountClass);
   const route = accountClass <= 4 ? 'patrimonial' : accountClass <= 6 ? 'orcamentaria' : 'controle';
   const url = new URL('msc_' + route, endpoint);
@@ -163,15 +157,10 @@ function validateNext(href: string, current: URL, expected: URL): void {
 
 export type HistoryPage = {
   rows: HistoryRow[];
-  offset: number;
   nextOffset: number | null;
-  receivedAt: Date;
-  cached: boolean;
 };
 
-export function parsePage(
-  text: string, filters: Filters, offset: number, pageLimit = pageSize,
-): Omit<HistoryPage, 'receivedAt' | 'cached'> {
+export function parsePage(text: string, filters: Filters, offset: number, pageLimit: number): HistoryPage {
   let data: unknown;
   let source: unknown;
   try {
@@ -206,7 +195,7 @@ export function parsePage(
     validateNext(next[0], pageUrl(filters, offset, pageLimit), pageUrl(filters, nextOffset, pageLimit));
   }
   const sourceItems = source['items'];
-  return { rows: items.map((entry, index) => parseRow(entry, sourceItems[index], filters)), offset, nextOffset };
+  return { rows: items.map((entry, index) => parseRow(entry, sourceItems[index], filters)), nextOffset };
 }
 
 function wait(ms: number, signal: AbortSignal): Promise<void> {
@@ -232,12 +221,11 @@ function retryDelay(value: string | null): number {
 }
 
 export class HistoryService {
-  private readonly cache = new Map<string, HistoryPage>();
   private lastStart = -Infinity;
   private retryAt = 0;
   private active: Promise<HistoryPage> | null = null;
 
-  async load(filters: Filters, offset: number, refresh: boolean, signal: AbortSignal, limit = pageSize): Promise<HistoryPage> {
+  async load(filters: Filters, offset: number, signal: AbortSignal, limit: number): Promise<HistoryPage> {
     signal.throwIfAborted();
     const validated = validateFilters(filters);
     if (typeof validated === 'string' || !Number.isSafeInteger(limit) || limit < 1 || limit > 5000 ||
@@ -245,13 +233,6 @@ export class HistoryService {
       throw new HistoryError(typeof validated === 'string' ? validated : 'Página inválida.');
     }
     const url = pageUrl(validated, offset, limit);
-    const key = url.href;
-    const cached = this.cache.get(key);
-    if (!refresh && cached && Date.now() - cached.receivedAt.getTime() < cacheDuration) {
-      this.cache.delete(key);
-      this.cache.set(key, cached);
-      return { ...cached, cached: true };
-    }
 
     while (this.active) {
       await settleOrAbort(this.active, signal);
@@ -262,12 +243,6 @@ export class HistoryService {
     try {
       const page = await task;
       signal.throwIfAborted();
-      this.cache.delete(key);
-      this.cache.set(key, page);
-      if (this.cache.size > 5) {
-        const oldest = this.cache.keys().next().value;
-        if (oldest !== undefined) this.cache.delete(oldest);
-      }
       return page;
     } finally {
       this.active = null;
@@ -303,7 +278,7 @@ export class HistoryService {
       }
       const body = await response.text();
       requestSignal.throwIfAborted();
-      return { ...parsePage(body, filters, offset, limit), receivedAt: new Date(), cached: false };
+      return parsePage(body, filters, offset, limit);
     } catch (error) {
       signal.throwIfAborted();
       if (timeout.signal.aborted) throw new HistoryError('O Siconfi excedeu o prazo de 15 segundos.');

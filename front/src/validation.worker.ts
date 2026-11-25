@@ -1,11 +1,9 @@
 import { validate } from './validation.ts';
 import type { ValidationProgress, ValidationResult } from './validation.ts';
-import type { Encoding } from './csv.ts';
 import catalog from './catalog-2026.json' with { type: 'json' };
 
 export interface ValidationRequest {
   file: File;
-  encoding: Encoding;
 }
 
 export type WorkerMessage =
@@ -26,7 +24,7 @@ addEventListener('message', async ({ data }: MessageEvent<ValidationRequest>) =>
   const readMs = performance.now() - started;
   const analysisStarted = performance.now();
   try {
-    const result = validate(new Uint8Array(buffer), data.encoding, catalog, progress => send({ type: 'progress', progress }));
+    const result = validate(new Uint8Array(buffer), catalog, progress => send({ type: 'progress', progress }));
     const analysisMs = performance.now() - analysisStarted;
     send({ type: 'complete', result, timing: { readMs, analysisMs } });
   } catch {

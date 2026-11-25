@@ -15,7 +15,7 @@ const fp = ['1', 'FP'];
 const row = (account, type, value, side, pairs = [po]) => [account, ...pairs.flat(),
   ...Array(12 - pairs.length * 2).fill(''), value, type, side].join(';');
 const run = (rows, { period = '2026-01', metadata = '3550308EX;' + period, guide = columns.join(';'), selected = catalog } = {}) =>
-  validate(Buffer.from([metadata, guide, ...rows].join('\n')), 'UTF-8', selected);
+  validate(Buffer.from([metadata, guide, ...rows].join('\n')), selected);
 const groups = (result, id) => result.balances.groups.filter(group => group.id === id);
 const totals = group => group.totals.map(total => total.value);
 const origins = group => group.blocks.flatMap(block => block.origins.items);
@@ -179,7 +179,7 @@ test('pré-requisitos globais bloqueiam os dois cálculos, mesmo após subtotal 
   const bytes = Buffer.concat([Buffer.from(['3550308EX;2026-01', columns.join(';'), ...valid, ''].join('\n')), Buffer.from([0xff])]);
   for (const [result, cause, source] of [
     [run([...valid, '"abc']), 'leitura-incompleta', 'E01'],
-    [validate(bytes, 'UTF-8', catalog), 'leitura-incompleta', 'L01'],
+    [validate(bytes, catalog), 'leitura-incompleta', 'L01'],
     [run(valid, { metadata: '3550308EX' }), 'metadados', 'L02'],
     [run(valid, { guide: 'CONTA' }), 'guia', 'E03'],
     [run(valid, { period: '2026-14' }), 'competência', 'E04'],

@@ -17,14 +17,14 @@ const local = (month = 5) => ({
   anterior: { blocked: false, balances: [expected] },
   posterior: { blocked: false, balances: [expected] },
 });
-const page = (rows = [], nextOffset = null) => ({ rows, nextOffset, offset: 0, receivedAt: new Date(0), cached: false });
+const page = (rows = [], nextOffset = null) => ({ rows, nextOffset });
 const run = async (data, load, signal = new AbortController().signal) => {
   const results = [];
   await compareMonthlyBalances(data, load, signal, result => results.push(result));
   return results;
 };
 const csvRow = (type, value) => [account, '10131', 'PO', ...Array(10).fill(''), value, type, 'D'].join(';');
-const verify = (code, period, rows) => validate(Buffer.from([code + ';' + period, columns.join(';'), ...rows].join('\n')), 'UTF-8', catalog);
+const verify = (code, period, rows) => validate(Buffer.from([code + ';' + period, columns.join(';'), ...rows].join('\n')), catalog);
 
 test('combina todas as dimensões, preserva zeros e usa decimais exatos', () => {
   const actual = normalizeMonthlyRow({
@@ -60,9 +60,8 @@ test('consulta as oito classes e todas as páginas, soma duplicatas e preserva d
   const calls = [];
   const balances = local();
   balances.anterior.balances.push({ key: '111110002 · PO 10131', net: decimal('0') });
-  const results = await run(balances, async (filters, offset, refresh, _signal, limit) => {
+  const results = await run(balances, async (filters, offset, _signal, limit) => {
     calls.push({ ...filters, offset });
-    assert.equal(refresh, true);
     assert.equal(limit, 5000);
     assert.equal(filters.year, '2026');
     if (filters.accountClass !== '1') return page();
@@ -124,7 +123,7 @@ test('interrompe no orçamento, no HTTP 429 e ao cancelar', async t => {
   assert.equal(requests, 1);
   assert.ok(limited.every(result => result.state === 'Inconclusiva'));
   const abort = new AbortController();
-  await assert.rejects(run(local(), async (_filter, _offset, _refresh, signal) => {
+  await assert.rejects(run(local(), async (_filter, _offset, signal) => {
     abort.abort();
     assert.equal(signal.aborted, true);
     return page();
@@ -135,7 +134,7 @@ test('interrompe no orçamento, no HTTP 429 e ao cancelar', async t => {
     return deadline.signal;
   });
   let deadlineRequests = 0;
-  const expired = await run(local(), async (_filter, _offset, _refresh, signal) => {
+  const expired = await run(local(), async (_filter, _offset, signal) => {
     deadlineRequests++;
     deadline.abort();
     assert.equal(signal.aborted, true);

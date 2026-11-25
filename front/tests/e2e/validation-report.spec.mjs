@@ -70,6 +70,28 @@ function previousReference(filters) {
   ];
 }
 
+test('exige CSV em UTF-8, orienta a reexportação e omite o histórico manual', async ({ page, context, baseURL }) => {
+  const calls = [];
+  await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
+  await page.goto('/');
+  const input = page.getByLabel('Arquivo MSC em CSV');
+  await expect(input).toHaveAccessibleDescription(/^Use um arquivo CSV em UTF-8\./);
+  await expect(page.getByLabel('Codificação', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Histórico público do Siconfi', includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Abrir histórico|Consultar histórico/, includeHidden: true })).toHaveCount(0);
+
+  await input.setInputFiles({
+    name: 'msc-codificacao-invalida.csv', mimeType: 'text/csv', buffer: Buffer.from([0xe9]),
+  });
+  await page.getByRole('button', { name: 'Validar', exact: true }).click();
+  const result = page.getByRole('tabpanel', { name: 'Resultado' });
+  const finding = result.getByRole('row', { name: /Linha 1, byte 0.*leitura em UTF-8/ });
+  await expect(finding).toContainText('0xE9');
+  await expect(finding).toContainText('Reexporte o CSV em UTF-8 e valide novamente.');
+  await expect(finding).toContainText('L01');
+  expect(calls).toHaveLength(0);
+});
+
 test('mostra a falha de FR e a conta da própria linha na aba Resultado', async ({ page, context, baseURL }) => {
   const calls = [];
   await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });

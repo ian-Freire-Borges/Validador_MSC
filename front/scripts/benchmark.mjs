@@ -54,7 +54,7 @@ for (const sample of corpus) {
     const file = readFileSync(join(destination, sample.name));
     const readMs = performance.now() - start;
     const analyzeStart = performance.now();
-    const result = validate(file, 'UTF-8', catalog);
+    const result = validate(file, catalog);
     const finished = performance.now();
     const after = process.memoryUsage();
     assert.equal(result.records, sample.records);
@@ -64,7 +64,7 @@ for (const sample of corpus) {
 
     const decodeStart = performance.now();
     let lines = 0;
-    for (const line of decodeLines(file, 'UTF-8')) {
+    for (const line of decodeLines(file)) {
       assert.ok(!line.fault);
       lines++;
     }

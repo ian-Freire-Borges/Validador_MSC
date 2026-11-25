@@ -100,7 +100,7 @@ function compare(localBalances: MonthlyBalance[], officialBalances: Map<string, 
   return details;
 }
 
-type PageLoader = (filters: Filters, offset: number, refresh: boolean, signal: AbortSignal, limit: number) => Promise<HistoryPage>;
+type PageLoader = (filters: Filters, offset: number, signal: AbortSignal, limit: number) => Promise<HistoryPage>;
 
 export async function compareMonthlyBalances(
   local: MonthlyBalances, load: PageLoader, signal: AbortSignal,
@@ -138,7 +138,7 @@ export async function compareMonthlyBalances(
           if (queries >= maximumPages || deadline.aborted) throw new HistoryError(budgetMessage);
           signal.throwIfAborted();
           queries++;
-          const page = await load(filters, offset, true, requestSignal, searchLimit);
+          const page = await load(filters, offset, requestSignal, searchLimit);
           requestSignal.throwIfAborted();
           for (const row of page.rows) {
             const balance = normalizeMonthlyRow(row);

@@ -12,7 +12,7 @@ npm.cmd ci --no-audit --no-fund
 npm.cmd start
 ```
 
-Abra http://127.0.0.1:4200. Selecione o CSV, escolha a codificação e acione **Validar**. A validação executa em um Web Worker que pode ser encerrado pelo botão **Cancelar validação**. A mudança de arquivo ou de codificação limpa os resultados anteriores. O arquivo é processado na memória do navegador, sem transmissão e sem armazenamento pelo aplicativo.
+Abra http://127.0.0.1:4200. Selecione um CSV em UTF-8 e acione **Validar**. Se houver falha na leitura, reexporte o CSV em UTF-8 e valide novamente. A validação executa em um Web Worker que pode ser encerrado pelo botão **Cancelar validação**. A troca do arquivo limpa o relatório anterior. O arquivo é processado na memória do navegador, sem transmissão e sem armazenamento pelo aplicativo. Para arquivos elegíveis de municípios baianos de 2026, a aba **Avisos** exibe a comparação automática com as competências vizinhas consultadas no Siconfi.
 
 Angular CLI e builder 22.0.9, Angular 22.0.8 e TypeScript 6.0.3 estão fixados no lockfile. A [matriz oficial](https://angular.dev/reference/versions) inclui Node.js 24.18 para essa combinação.
 
@@ -59,7 +59,7 @@ python scripts/extract_catalog.py
 python scripts/extract_catalog.py --check
 ```
 
-A opção `--check` regenera em memória e exige identidade byte a byte com `front/src/catalog-2026.json`. O motor exige a versão aprovada e confirma o SHA256 do JSON compacto em UTF-8 com chaves ordenadas, excluindo o próprio campo `version`. O template oficial original tem 6.121 linhas físicas com CRLF, incluindo metadados, guia e 6.119 registros. Em Windows-1252, a guia passa e os campos ilustrativos produzem achados. Em UTF-8 estrito, a decodificação para no primeiro erro.
+A opção `--check` regenera em memória e exige identidade byte a byte com `front/src/catalog-2026.json`. O motor exige a versão aprovada e confirma o SHA256 do JSON compacto em UTF-8 com chaves ordenadas, excluindo o próprio campo `version`. O template oficial arquivado tem 6.121 linhas físicas com CRLF, incluindo metadados, guia e 6.119 registros. Na pré-validação com UTF-8 estrito, a leitura desse template para no primeiro byte inválido.
 
 ## Corpus sintético e benchmark do motor
 

@@ -3,7 +3,7 @@ import type { RuleId } from './validation.ts';
 
 const monthFormatter = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const findingTitles: Record<Exclude<RuleId, BalanceGroup['id']>, string> = {
-  L01: 'O arquivo contém caracteres inválidos para a codificação selecionada.',
+  L01: 'O arquivo contém bytes inválidos para a leitura em UTF-8.',
   L02: 'A primeira linha não segue o formato dos metadados da MSC.',
   E01: 'O registro não segue a sintaxe do CSV.',
   E02: 'O código da instituição transmissora não é elegível.',

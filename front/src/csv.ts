@@ -1,5 +1,3 @@
-export type Encoding = 'UTF-8' | 'Windows-1252';
-
 interface ByteFault {
   offset: number;
   observed: string;
@@ -7,14 +5,6 @@ interface ByteFault {
 }
 
 const utf8Bom = [0xef, 0xbb, 0xbf];
-const unicodeBoms = [
-  [0xff, 0xfe, 0, 0], [0, 0, 0xfe, 0xff], utf8Bom, [0xfe, 0xff], [0xff, 0xfe],
-  [0x2b, 0x2f, 0x76, 0x38], [0x2b, 0x2f, 0x76, 0x39], [0x2b, 0x2f, 0x76, 0x2b], [0x2b, 0x2f, 0x76, 0x2f],
-  [0xf7, 0x64, 0x4c], [0xdd, 0x73, 0x66, 0x73], [0x0e, 0xfe, 0xff],
-  [0xfb, 0xee, 0x28], [0x84, 0x31, 0x95, 0x33],
-];
-const unassigned = new Set([0x81, 0x8d, 0x8f, 0x90, 0x9d]);
-const cp1252 = '€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008dŽ\u008f\u0090‘’“”•–—˜™š›œ\u009džŸ';
 
 function hex(byte: number): string {
   return byte.toString(16).toUpperCase().padStart(2, '0');
@@ -48,19 +38,9 @@ export interface DecodedLine {
   fault?: ByteFault;
 }
 
-export function* decodeLines(bytes: Uint8Array, encoding: Encoding): Generator<DecodedLine> {
-  const matches = (bom: number[]) => bom.every((byte, index) => byte === bytes[index]);
-  if (encoding === 'Windows-1252') {
-    const bom = unicodeBoms.find(matches);
-    if (bom) {
-      yield { number: 1, endByte: bom.length, fault: {
-        offset: 0, observed: bom.map(hex).join(' '), expected: 'Windows-1252 sem BOM Unicode',
-      } };
-      return;
-    }
-  }
-  const decoder = encoding === 'UTF-8' ? new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }) : null;
-  let start = decoder && matches(utf8Bom) ? 3 : 0;
+export function* decodeLines(bytes: Uint8Array): Generator<DecodedLine> {
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+  let start = utf8Bom.every((byte, index) => byte === bytes[index]) ? utf8Bom.length : 0;
   for (let number = 1; start < bytes.length; number++) {
     const lf = bytes.indexOf(0x0a, start);
     const end = lf < 0 ? bytes.length : lf;
@@ -68,31 +48,17 @@ export function* decodeLines(bytes: Uint8Array, encoding: Encoding): Generator<D
     const line = bytes.subarray(start, lf >= 0 && bytes[end - 1] === 0x0d ? end - 1 : end);
     let text: string;
     let bad = line.indexOf(0);
-    if (decoder) {
-      try {
-        text = decoder.decode(line);
-      } catch {
-        const utfFault = invalidUtf8(line);
-        if (utfFault !== undefined && (bad < 0 || utfFault < bad)) bad = utfFault;
-        text = '';
-      }
-    } else {
+    try {
+      text = decoder.decode(line);
+    } catch {
+      const utfFault = invalidUtf8(line);
+      if (utfFault !== undefined && (bad < 0 || utfFault < bad)) bad = utfFault;
       text = '';
-      for (let index = 0; index < line.length; index++) {
-        const byte = line[index];
-        if (byte === 0 || unassigned.has(byte)) {
-          bad = index;
-          break;
-        }
-        text += byte >= 0x80 && byte < 0xa0 ? cp1252[byte - 0x80] : String.fromCharCode(byte);
-      }
     }
     if (bad >= 0) {
       yield { number, endByte, fault: {
         offset: start + bad, observed: '0x' + hex(line[bad]),
-        expected: encoding === 'UTF-8'
-          ? 'UTF-8 válido, sem NUL. Se o arquivo estiver em Windows-1252, selecione essa opção e valide novamente.'
-          : 'Windows-1252 com bytes mapeados e sem NUL',
+        expected: 'UTF-8 válido, sem NUL. Reexporte o CSV em UTF-8 e valide novamente.',
       } };
       return;
     }

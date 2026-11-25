@@ -1,6 +1,5 @@
 import { columns, compatibleCatalog, natures, rules, valueTypes } from './catalog.ts';
 import { decodeLines, parseRecord } from './csv.ts';
-import type { Encoding } from './csv.ts';
 import { balanceOrigin, balanceRules, Balances } from './balances.ts';
 import type { BalanceOrigin } from './balances.ts';
 import { MonthlyBalanceCollector, monthlyCompetence } from './monthly-balances.ts';
@@ -44,7 +43,6 @@ interface RuleCounts {
 }
 
 export interface ValidationResult {
-  encoding: Encoding;
   catalogVersion: string | null;
   catalogCompatible: boolean;
   institution: string | null;
@@ -80,7 +78,7 @@ export interface ValidationProgress {
 }
 
 export function validate(
-  bytes: Uint8Array, encoding: Encoding, candidate: unknown,
+  bytes: Uint8Array, candidate: unknown,
   onProgress?: (progress: ValidationProgress) => void,
 ): ValidationResult {
   onProgress?.({ bytesRead: 0, totalBytes: bytes.length, records: 0, phase: 'catálogo' });
@@ -128,7 +126,7 @@ export function validate(
   };
 
   onProgress?.({ bytesRead: 0, totalBytes: bytes.length, records: 0, phase: 'leitura e análise' });
-  for (const line of decodeLines(bytes, encoding)) {
+  for (const line of decodeLines(bytes)) {
     if (line.fault) {
       readFault = 'bytes';
       check('L01', false, { line: line.number, byteOffset: line.fault.offset }, line.fault.observed, line.fault.expected);
@@ -141,7 +139,7 @@ export function validate(
       check('E01', false, location(line.number, parsed.fieldIndex, line.number === 1 ? ['Instituição', 'Competência'][parsed.fieldIndex - 1] : undefined),
         parsed.observed, parsed.expected);
       if (line.endByte < bytes.length) block('L01', 'leitura-incompleta');
-      else check('L01', true, {}, encoding, encoding);
+      else check('L01', true, {}, 'UTF-8', 'UTF-8');
       break;
     }
     const fields = parsed.fields;
@@ -290,7 +288,7 @@ export function validate(
   }
 
   if (!readFault) {
-    check('L01', true, {}, encoding, encoding);
+    check('L01', true, {}, 'UTF-8', 'UTF-8');
     check('E01', true, {}, '', 'CSV com delimitador ponto e vírgula');
   }
   if (lineCount === 0) {
@@ -347,7 +345,7 @@ export function validate(
     ruleIds.some(id => results[id].state === 'Bloqueada') ? 'Verificação incompleta' :
       'Sem pendências nas verificações executadas do MVP 1.1';
   return {
-    encoding, catalogCompatible: Boolean(catalog), catalogVersion, institution, institutionName,
+    catalogCompatible: Boolean(catalog), catalogVersion, institution, institutionName,
     institutionStatus, period, periodKind, records, findings, rules: results, summary, balances: balanceResults,
     monthlyBalances: monthly?.collector.finish(monthly.competence) ?? null,
   };

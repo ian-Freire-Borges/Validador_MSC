@@ -21,21 +21,18 @@ main { padding-block: 1.5rem 3rem; }
   background: #fff;
   margin-bottom: 1rem;
 }
-.inputs, .metadata { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 255px), 1fr)); }
-.inputs > div { min-width: 0; }
+.metadata { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 255px), 1fr)); }
 label { display: block; font-weight: 650; margin-bottom: .3rem; }
-button, input, select { font: inherit; max-width: 100%; }
-select, button { padding: .5rem .8rem; border: 1px solid #527871; border-radius: .35rem; }
-button { background: #075a4e; color: #fff; cursor: pointer; font-weight: 650; }
+button, input { font: inherit; max-width: 100%; }
+button { padding: .5rem .8rem; border: 1px solid #527871; border-radius: .35rem; background: #075a4e; color: #fff; cursor: pointer; font-weight: 650; }
 button.secondary { background: #fff; color: #12453d; }
 button:disabled { background: #e8efed; color: #546866; cursor: default; border-color: #8a9f9a; }
 :focus-visible { outline: 3px solid #a34806; outline-offset: 3px; }
 .actions, .pagination { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
-.pagination { margin-top: 1rem; }
+.actions, .pagination { margin-top: 1rem; }
 progress { width: min(100%, 25rem); accent-color: #075a4e; }
-dt, summary { font-weight: 650; }
+dt { font-weight: 650; }
 dd { margin: 0; overflow-wrap: anywhere; }
-summary { cursor: pointer; }
 .table-scroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; }
 th, td { border-bottom: 1px solid #cfddd9; text-align: left; vertical-align: top; padding: .55rem .65rem; }

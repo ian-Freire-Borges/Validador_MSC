@@ -16,7 +16,7 @@ const header = columns.join(';');
 const meta = '3550308EX;2026-01';
 const file = (row = makeRow(), { first = meta, second = header, newline = '\n', trailing = false } = {}) =>
   [first, second, ...(Array.isArray(row) ? row : [row])].join(newline) + (trailing ? newline : '');
-const evaluate = (text, selectedCatalog = catalog) => validate(Buffer.from(text), 'UTF-8', selectedCatalog);
+const evaluate = (text, selectedCatalog = catalog) => validate(Buffer.from(text), selectedCatalog);
 const good = 'Sem pendências nas verificações executadas do MVP 1.1';
 const bad = 'Pendências nas verificações do MVP 1.1';
 
@@ -38,7 +38,6 @@ test('arquivo mensal canônico é determinístico e preserva regras sem candidat
   assert.equal(result.institutionName, 'Prefeitura Municipal de São Paulo - SP');
   assert.equal(result.periodKind, 'Mensal');
   assert.equal(result.records, 1);
-  assert.equal(result.encoding, 'UTF-8');
   assert.deepEqual(result, evaluate(file()));
   assert.deepEqual(Object.keys(result.rules), Object.keys(rules));
   for (const id of Object.keys(rules)) {
@@ -46,36 +45,28 @@ test('arquivo mensal canônico é determinístico e preserva regras sem candidat
   }
 });
 
-test('L01: template original, offset e codificações explícitas', () => {
+test('L01: template original com byte incompatível com UTF-8', () => {
   const template = readFileSync(new URL('../../references/msc/2026/2026_Template_MSC_15012026.csv', import.meta.url));
-  const utf8 = validate(template, 'UTF-8', catalog);
+  const utf8 = validate(template, catalog);
   checkFinding(utf8, 'L01', 1, undefined);
   assert.ok(Number.isInteger(utf8.findings[0].byteOffset));
   assert.equal(utf8.rules.E03.state, 'Bloqueada');
-  const cp = validate(template, 'Windows-1252', catalog);
-  assert.equal(cp.rules.L01.state, 'Conforme');
-  assert.equal(cp.rules.E03.state, 'Conforme');
-  assert.equal(cp.encoding, 'Windows-1252');
-  assert.equal(cp.records, 6119);
-  assert.equal(cp.summary, bad);
-  assert.equal(cp.rules.E02.state, 'Falhou');
-  assert.equal(cp.rules.E09.state, 'Falhou');
-  assert.equal(validate(Buffer.from(file()), 'Windows-1252', catalog).summary, good);
+  assert.match(utf8.findings[0].expected, /Reexporte o CSV em UTF-8/);
 });
 
-test('L01: BOM, bytes sem mapeamento, NUL e UTF-8 malformado', () => {
+test('L01: BOM UTF-8, BOM incompatível, NUL e UTF-8 malformado', () => {
   assert.equal(evaluate('\ufeff' + file()).summary, good);
   checkFinding(evaluate('\ufeff\ufeff' + file()), 'E02', 1, 1);
-  for (const bytes of [[0x81], [0x8d], [0x8f], [0x90], [0x9d], [0], [0xef, 0xbb, 0xbf], [0xff, 0xfe], [0xfe, 0xff]]) {
-    const cp = validate(Uint8Array.from(bytes), 'Windows-1252', catalog);
-    checkFinding(cp, 'L01', 1, undefined);
-    assert.equal(cp.findings[0].byteOffset, 0);
+  for (const bytes of [[0x80], [0xff, 0xfe], [0xfe, 0xff], [0]]) {
+    const result = validate(Uint8Array.from(bytes), catalog);
+    checkFinding(result, 'L01', 1, undefined);
+    assert.equal(result.findings[0].byteOffset, 0);
   }
   for (const bytes of [[0], [0xc0, 0xaf], [0xe0, 0x80, 0x80], [0xed, 0xa0, 0x80], [0xf4, 0x90, 0x80, 0x80], [0xf0, 0x90]]) {
-    checkFinding(validate(Uint8Array.from(bytes), 'UTF-8', catalog), 'L01', 1, undefined);
+    checkFinding(validate(Uint8Array.from(bytes), catalog), 'L01', 1, undefined);
   }
   const secondByte = Buffer.concat([Buffer.from(file() + '\n'), Buffer.from([0x80])]);
-  const prefix = validate(secondByte, 'UTF-8', catalog);
+  const prefix = validate(secondByte, catalog);
   checkFinding(prefix, 'L01', 4, undefined, '0x80');
   assert.equal(prefix.findings[0].byteOffset, secondByte.length - 1);
   assert.equal(prefix.rules.E09.state, 'Conforme');

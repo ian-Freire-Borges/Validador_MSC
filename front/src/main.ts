@@ -1,10 +1,8 @@
 import { ChangeDetectorRef, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { currency, findingTitle, formatCompetence, validationLabel } from './report-presentation.ts';
-import { SiconfiHistory } from './siconfi-history.component.ts';
 import { SiconfiContinuity } from './siconfi-continuity.component.ts';
 import type { OnDestroy } from '@angular/core';
-import type { Encoding } from './csv.ts';
 import type { BlockReason, Finding, ValidationResult } from './validation.ts';
 import type { ValidationRequest, WorkerMessage } from './validation.worker.ts';
 
@@ -29,7 +27,7 @@ const reasonLabels: Record<BlockReason, string> = {
 
 @Component({
   selector: 'msc-root',
-  imports: [SiconfiHistory, SiconfiContinuity],
+  imports: [SiconfiContinuity],
   templateUrl: './app.html',
   host: { '(window:beforeprint)': 'preparePrinting()', '(window:afterprint)': 'finishPrinting()' },
 })
@@ -39,7 +37,6 @@ class App implements OnDestroy {
   private worker: Worker | null = null;
   private file: File | null = null;
   readonly fileName = signal('');
-  readonly encoding = signal<Encoding>('UTF-8');
   readonly busy = signal(false);
   readonly status = signal('Selecione um arquivo CSV.');
   readonly progress = signal(0);
@@ -96,12 +93,7 @@ class App implements OnDestroy {
   selectFile(files: FileList | null): void {
     this.file = files?.item(0) ?? null;
     this.fileName.set(this.file?.name ?? '');
-    this.reset(this.file ? 'Arquivo selecionado. Confira a codificação e selecione Validar.' : 'Selecione um arquivo CSV.');
-  }
-
-  selectEncoding(encoding: string): void {
-    this.encoding.set(encoding === 'Windows-1252' ? encoding : 'UTF-8');
-    this.reset(this.file ? 'Codificação selecionada. Selecione Validar para processar o arquivo.' : 'Selecione um arquivo CSV.');
+    this.reset(this.file ? 'Arquivo selecionado. Selecione Validar.' : 'Selecione um arquivo CSV.');
   }
 
   run(): void {
@@ -124,7 +116,9 @@ class App implements OnDestroy {
           this.result.set(data.result);
           this.status.set('Pré-validação local concluída.');
         } else {
-          this.reset('Falha durante a ' + data.stage + '. Selecione Validar para tentar de novo.');
+          this.reset(data.stage === 'leitura'
+            ? 'Falha durante a leitura. Reexporte o CSV em UTF-8 e valide novamente.'
+            : 'Falha durante a validação. Selecione Validar para tentar de novo.');
         }
       };
       worker.onerror = () => {
@@ -133,7 +127,7 @@ class App implements OnDestroy {
       worker.onmessageerror = () => {
         if (this.worker === worker) this.reset('Falha ao receber o resultado. Selecione Validar para tentar de novo.');
       };
-      worker.postMessage({ file: this.file, encoding: this.encoding() } satisfies ValidationRequest);
+      worker.postMessage({ file: this.file } satisfies ValidationRequest);
     } catch {
       this.reset('Falha ao iniciar a validação. Recarregue a aplicação e tente novamente.');
     }
