@@ -1,7 +1,7 @@
 <section class="report-section" aria-labelledby="siconfi-continuity">
   <h3 id="siconfi-continuity">Avisos de saldos entre competências</h3>
   @if (balances()) {
-    <p class="report-reference">Comparação informativa. <a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
+    <p class="report-reference">Os avisos de saldo entre competências têm caráter informativo. <a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
     @if (busy()) {
       <button type="button" class="secondary" (click)="cancel()">Cancelar comparação</button>
     }
@@ -13,11 +13,10 @@
         <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável' && result.state !== 'Sem referência na API') { · Referência {{ referenceMonth(result) }} }</p>
         @if (result.state === 'Sem referência na API') {
           <p>A consulta pública do Siconfi não retornou registros para o saldo de {{ referenceMonth(result) }}.</p>
+        } @else if (result.missingInCsv || result.missingInSiconfi) {
+          <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
         } @else {
           <p>{{ result.message }}</p>
-        }
-        @if (result.missingInCsv || result.missingInSiconfi) {
-          <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
         }
         @if (result.differences.length) {
           <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'Detalhes da comparação com a competência ' + referenceMonth(result)">
@@ -27,7 +26,7 @@
               <tbody>
                 @for (difference of visible(result); track difference.key) {
                   <tr>
-                    <td><span class="error-type report-advisory">Saldo mensal</span></td>
+                    <td><span class="error-type report-advisory">Divergência confirmada</span></td>
                     <td>
                       <strong>Conta {{ difference.key }}</strong>
                       <div>O saldo {{ previous ? 'inicial' : 'final' }} no CSV de {{ formatCompetence(period()) }} é {{ currency(difference.local) }} e difere do saldo {{ previous ? 'final' : 'inicial' }} no Siconfi de {{ referenceMonth(result) }}, de {{ currency(difference.official) }}. Diferença de {{ currency(difference.difference) }} (CSV menos Siconfi).</div>

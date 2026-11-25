@@ -1,6 +1,6 @@
 import { ChangeDetectorRef, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { currency, findingTitle, formatCompetence } from './report-presentation.ts';
+import { currency, findingTitle, formatCompetence, validationLabel } from './report-presentation.ts';
 import { SiconfiHistory } from './siconfi-history.component.ts';
 import { SiconfiContinuity } from './siconfi-continuity.component.ts';
 import type { OnDestroy } from '@angular/core';
@@ -31,7 +31,7 @@ const reasonLabels: Record<BlockReason, string> = {
   selector: 'msc-root',
   imports: [SiconfiHistory, SiconfiContinuity],
   templateUrl: './app.html',
-  host: { '(window:afterprint)': 'finishPrinting()' },
+  host: { '(window:beforeprint)': 'preparePrinting()', '(window:afterprint)': 'finishPrinting()' },
 })
 class App implements OnDestroy {
   private readonly changeDetector = inject(ChangeDetectorRef);
@@ -44,6 +44,7 @@ class App implements OnDestroy {
   readonly status = signal('Selecione um arquivo CSV.');
   readonly progress = signal(0);
   readonly result = signal<ValidationResult | null>(null);
+  readonly activeReportTab = signal<'resultado' | 'avisos'>('resultado');
   readonly page = signal(1);
   readonly pageSize = 50;
   readonly printing = signal(false);
@@ -61,6 +62,11 @@ class App implements OnDestroy {
   readonly balanceFailures = computed(() => this.result()?.balances.groups.filter(group => group.state === 'Falhou') ?? []);
   readonly structureCount = computed(() => this.findings().filter(finding => this.category(finding) === 'Estrutura').length);
   readonly errorCount = computed(() => this.findings().length + this.balanceFailures().length);
+  readonly incomplete = computed(() => {
+    const report = this.result();
+    return !!report && Object.values(report.rules).some(rule => rule.blocked > 0);
+  });
+  readonly reportStatus = computed(() => validationLabel(this.errorCount(), this.incomplete()));
   readonly contentCount = computed(() => this.errorCount() - this.structureCount());
   readonly pageCount = computed(() => Math.max(1, Math.ceil(this.errorCount() / this.pageSize)));
   readonly visible = computed(() => {
@@ -116,7 +122,7 @@ class App implements OnDestroy {
           this.stop();
           this.progress.set(100);
           this.result.set(data.result);
-          this.status.set('Validação local concluída. ' + data.result.summary + '.');
+          this.status.set('Pré-validação local concluída.');
         } else {
           this.reset('Falha durante a ' + data.stage + '. Selecione Validar para tentar de novo.');
         }
@@ -141,11 +147,37 @@ class App implements OnDestroy {
     this.page.update(page => Math.max(1, Math.min(this.pageCount(), page + change)));
   }
 
+  navigateReportTabs(event: KeyboardEvent, resultTab: HTMLButtonElement, noticesTab: HTMLButtonElement): void {
+    let tab = this.activeReportTab();
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        tab = tab === 'resultado' ? 'avisos' : 'resultado';
+        break;
+      case 'Home':
+        tab = 'resultado';
+        break;
+      case 'End':
+        tab = 'avisos';
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    this.activeReportTab.set(tab);
+    (tab === 'resultado' ? resultTab : noticesTab).focus();
+  }
+
   printErrors(): void {
     if (!this.errorCount() || this.printing()) return;
+    this.preparePrinting();
+    window.print();
+  }
+
+  preparePrinting(): void {
+    if (!this.result() || this.printing()) return;
     this.printing.set(true);
     this.changeDetector.detectChanges();
-    window.print();
   }
 
   finishPrinting(): void {
@@ -179,6 +211,7 @@ class App implements OnDestroy {
     this.result.set(null);
     this.progress.set(0);
     this.page.set(1);
+    this.activeReportTab.set('resultado');
     this.finishPrinting();
     this.status.set(status);
   }

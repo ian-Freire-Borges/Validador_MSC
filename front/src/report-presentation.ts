@@ -40,3 +40,8 @@ export function formatCompetence(period: string | null): string {
 export function currency(value: string): string {
   return 'R$ ' + value.replace('.', ',');
 }
+
+export function validationLabel(errorCount: number, incomplete: boolean): string {
+  if (errorCount > 0) return 'Erros na pré-validação';
+  return incomplete ? 'Pré-validação incompleta' : 'Sem erros nas verificações executadas';
+}

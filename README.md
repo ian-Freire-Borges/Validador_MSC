@@ -23,6 +23,15 @@ npm.cmd run build
 
 Os testes do motor usam o executor do Node.js e podem rodar com `node --test 'tests/*.test.mjs'` antes de instalar as dependências Angular. O build de produção gera `front/dist/validador-msc/browser` na árvore do repositório. Se o registro npm estiver indisponível e o cache local estiver completo, use `npm.cmd ci --offline --cache ../.npm-cache --no-audit --no-fund`.
 
+Para verificar o relatório no Chromium headless, instale o navegador de teste uma vez e execute a suíte em `front/`:
+
+```powershell
+npx.cmd playwright install chromium --only-shell
+npm.cmd run test:e2e
+```
+
+O Playwright serve o build Angular localmente e usa CSVs sintéticos e respostas simuladas do Siconfi.
+
 Para separar erros do compilador das restrições de acesso do bundler, execute `node_modules/.bin/ngc.cmd -p tsconfig.json` e `node_modules/.bin/tsc.cmd -p tsconfig.worker.json`. Em um ambiente capaz de executar o esbuild, rode também o build oficial completo.
 
 ## Catálogo
