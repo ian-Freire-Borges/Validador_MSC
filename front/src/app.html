@@ -50,19 +50,32 @@
                 (click)="activeReportTab.set('resultado')">Resultado</button>
         <button type="button" role="tab" id="avisos-aba" aria-controls="avisos-painel" #noticesTab
                 [attr.aria-selected]="activeReportTab() === 'avisos'" [tabIndex]="activeReportTab() === 'avisos' ? 0 : -1"
-                (click)="activeReportTab.set('avisos')">Avisos</button>
+                [attr.aria-describedby]="noticesNeedAttention() ? 'avisos-atencao' : null"
+                (click)="activeReportTab.set('avisos')">
+          Avisos
+          @if (noticesNeedAttention()) {
+            <span class="report-tab-attention" aria-hidden="true">!</span>
+          }
+        </button>
       </div>
+      @if (noticesNeedAttention()) {
+        <span id="avisos-atencao" class="sr-only screen-only">Há avisos que merecem atenção.</span>
+      }
       <div id="resultado-painel" role="tabpanel" aria-labelledby="resultado-aba" tabindex="0"
            [hidden]="activeReportTab() !== 'resultado' && !printing()">
         <div class="report-outcome">
           <p class="report-status"><strong>{{ reportStatus() }}</strong></p>
           @if (errorCount()) {
-            <p>Corrija os erros antes de enviar o arquivo ao Siconfi.</p>
+            <p>Corrija os erros listados abaixo antes de enviar a MSC ao Siconfi.</p>
           }
           @if (blockedReasons().length) {
-            <p>Verificações não concluídas · {{ blockedReasons().join(' · ') }}.</p>
+            <p>Algumas verificações ficaram pendentes.</p>
+            <ul class="report-pending" aria-label="Motivos das verificações pendentes">
+              @for (reason of blockedReasons(); track reason) {
+                <li>{{ reason }}</li>
+              }
+            </ul>
           }
-          <p>A pré-validação local não garante aceitação pelo Siconfi.</p>
         </div>
         @if (errorCount()) {
           <section class="report-section" aria-labelledby="achados">

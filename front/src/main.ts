@@ -7,22 +7,22 @@ import type { BlockReason, Finding, ValidationResult } from './validation.ts';
 import type { ValidationRequest, WorkerMessage } from './validation.worker.ts';
 
 const reasonLabels: Record<BlockReason, string> = {
-  'leitura-incompleta': 'Leitura incompleta',
-  'metadados': 'Metadados indisponíveis ou inválidos',
-  'guia': 'Guia indisponível ou inválida',
-  'instituição': 'Instituição sem enquadramento confirmado neste perfil',
-  'competência': 'Competência fora do perfil',
-  'catálogo': 'Catálogo indisponível ou incompatível',
-  'registro': 'Registro com tamanho inválido',
-  'par-incompleto': 'Par IC/TIPO incompleto',
-  'tipo': 'Tipo de IC desconhecido',
-  'conta': 'Conta inelegível',
-  'largura': 'Largura ou composição do IC inválida',
-  'outra-esfera': 'Executivo de outra esfera, fora da cobertura',
-  'cadastro-inconclusivo': 'Cadastro inconclusivo na edição da tabela Siconfi',
-  'sem-registros': 'Arquivo sem registros',
-  'chave-ic': 'Combinação de informações complementares incompleta, inválida ou ambígua',
-  'dados-saldo': 'Valor, tipo de valor ou natureza D/C inválido ou ausente',
+  'leitura-incompleta': 'Não foi possível ler o CSV até o fim.',
+  'metadados': 'A primeira linha com a instituição e a competência está ausente ou fora do leiaute esperado.',
+  'guia': 'O cabeçalho das colunas está ausente ou fora do leiaute esperado.',
+  'instituição': 'Não foi possível confirmar que a instituição é um Executivo municipal.',
+  'competência': 'A competência está fora do período coberto pelo validador.',
+  'catálogo': 'O catálogo de regras está indisponível ou é incompatível.',
+  'registro': 'Um registro tem um número de campos diferente do esperado.',
+  'par-incompleto': 'Falta o código ou o tipo em um par de campos de informação complementar.',
+  'tipo': 'O tipo de informação complementar não é reconhecido.',
+  'conta': 'A conta não é elegível no catálogo.',
+  'largura': 'Um código de informação complementar não tem a quantidade de dígitos ou o formato exigido.',
+  'outra-esfera': 'A instituição pertence ao Executivo de outra esfera de governo.',
+  'cadastro-inconclusivo': 'A tabela do Siconfi usada nesta validação não permitiu confirmar a instituição.',
+  'sem-registros': 'O CSV não tem registros para verificar.',
+  'chave-ic': 'A combinação de informações complementares está incompleta, inválida ou ambígua.',
+  'dados-saldo': 'O valor, o tipo de valor ou a indicação de débito ou crédito está ausente ou inválido.',
 };
 
 @Component({
@@ -45,6 +45,7 @@ class App implements OnDestroy {
   readonly page = signal(1);
   readonly pageSize = 50;
   readonly printing = signal(false);
+  readonly noticesNeedAttention = computed(() => this.continuity()?.needsAttention() ?? false);
   readonly findings = computed(() => this.result()?.findings.filter(finding => finding.status === 'Falhou') ?? []);
   readonly hasSourceOfFundsExportError = computed(() => this.findings().some(finding => this.isSourceOfFundsExportError(finding)));
   readonly currency = currency;

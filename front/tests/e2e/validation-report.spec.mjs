@@ -105,6 +105,11 @@ test('mostra a falha de FR e a conta da própria linha na aba Resultado', async 
   await expect(finding).toContainText('C03 · Campo IC3');
   await expect(finding).toContainText('Conta informada ' + debitAccount);
   await expect(result.getByText(/Confira o cadastro e o vínculo da fonte/)).toBeVisible();
+  await expect(result.getByText('Corrija os erros listados abaixo antes de enviar a MSC ao Siconfi.')).toBeVisible();
+  await expect(result.getByRole('list', { name: 'Motivos das verificações pendentes' }).getByRole('listitem')).toHaveText(
+    'A combinação de informações complementares está incompleta, inválida ou ambígua.');
+  await expect(result.getByText('A pré-validação local não garante aceitação pelo Siconfi.')).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Avisos' }).getByText('!', { exact: true })).toHaveCount(0);
   expect(calls).toHaveLength(0);
 });
 
@@ -220,9 +225,11 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
     expect(filters.get('limit')).toBe('5000');
     expect(filters.get('offset')).toBe('0');
     calls.push({ month, accountClass, valueType });
-    return previousReference(filters);
+    const rows = previousReference(filters);
+    if (rows.length) rows.push({ ...rows[0], conta_contabil: '111110603', valor: 0 });
+    return rows;
   });
-  await validateFile(page, '2914604EX', balances);
+  await validateFile(page, '2914604EX', [...balances, row('111110602', '0', 'beginning_balance', 'D')]);
 
   const resultTab = page.getByRole('tab', { name: 'Resultado' });
   const noticesTab = page.getByRole('tab', { name: 'Avisos' });
@@ -230,6 +237,8 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   await expect(result.getByText('Sem erros nas verificações executadas')).toBeVisible();
   await expect(result.getByText('Divergência confirmada')).toHaveCount(0);
   await expect(noticesTab).toHaveAttribute('aria-selected', 'false');
+  await expect(noticesTab.getByText('!', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(noticesTab).toHaveAccessibleDescription('Há avisos que merecem atenção.');
   await expect.poll(() => calls.length, { timeout: 25_000 }).toBe(16);
   expect(calls.map(({ month, accountClass, valueType }) => [month, accountClass, valueType])).toEqual([
     ...Array.from({ length: 8 }, (_, index) => [9, index + 1, 'ending_balance']),
@@ -245,6 +254,8 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   await expect(divergence).toContainText('outubro de 2026');
   await expect(divergence).toContainText('setembro de 2026');
   await expect(divergence).toContainText('Diferença de R$ 1');
+  await expect(notices.getByText('2 combinações sem par · 1 só no Siconfi e 1 só no CSV.')).toBeVisible();
+  await expect(notices.getByText('Entre as combinações sem par, o saldo líquido é zero em 1 das que só constam no CSV e em 1 das que só constam no Siconfi.')).toBeVisible();
   await expect(notices.getByText('Sem referência na API')).toBeVisible();
   await expect(notices.getByText(/não retornou registros para o saldo de novembro de 2026/)).toBeVisible();
 
@@ -261,6 +272,20 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   await expect(result).toBeVisible();
   await expect(result.getByText('Divergência confirmada')).toHaveCount(0);
   await expect(result.getByText(/Diferença de R\$ 1 \(CSV menos Siconfi\)/)).toHaveCount(0);
+});
+
+test('não sinaliza atenção quando há somente ausência de referência na API', async ({ page, context, baseURL }) => {
+  await mockSiconfi(context, baseURL, () => []);
+  await page.goto('/');
+  await selectFile(page, '2914604EX', '2026-01', balances, 'msc-sintetica.csv');
+  await page.getByRole('button', { name: 'Validar', exact: true }).click();
+
+  const noticesTab = page.getByRole('tab', { name: 'Avisos' });
+  await noticesTab.click();
+  const notices = page.getByRole('tabpanel', { name: 'Avisos' });
+  await expect(notices.getByText('Sem referência na API')).toBeVisible({ timeout: 15_000 });
+  await expect(noticesTab.getByText('!', { exact: true })).toHaveCount(0);
+  await expect(noticesTab).toHaveAccessibleDescription('');
 });
 
 test('trata HTTP 503 como comparação inconclusiva apenas em Avisos', async ({ page, context, baseURL }) => {

@@ -17,7 +17,12 @@ export type MonthlyDifference = {
   official: string;
   difference: string;
 };
-type DirectionDetails = { differences: MonthlyDifference[]; missingInCsv: number; missingInSiconfi: number };
+type DirectionDetails = {
+  differences: MonthlyDifference[];
+  missingInCsv: number;
+  missingInSiconfi: number;
+  zeroWithoutPair?: { csv: number; siconfi: number };
+};
 export type DirectionResult = {
   id: BalanceDirection;
   month: number;
@@ -106,11 +111,13 @@ function compare(
   const local = new Map(localBalances.filter(({ key }) => completedClasses.has(key[0]) && !excluded(key))
     .map(({ key, net }) => [key, net]));
   const details: DirectionDetails = { differences: [], missingInCsv: 0, missingInSiconfi: 0 };
+  const zeroWithoutPair = { csv: 0, siconfi: 0 };
   let matched = 0;
   for (const [key, localAmount] of local) {
     const officialAmount = officialBalances.get(key);
     if (!officialAmount) {
       details.missingInSiconfi++;
+      if (localAmount.units === 0n) zeroWithoutPair.csv++;
       continue;
     }
     matched++;
@@ -120,11 +127,14 @@ function compare(
       key, local: format(localAmount), official: format(officialAmount), difference: format(difference),
     });
   }
-  for (const key of officialBalances.keys()) {
-    if (!local.has(key) && !excluded(key)) details.missingInCsv++;
+  for (const [key, officialAmount] of officialBalances) {
+    if (!local.has(key) && !excluded(key)) {
+      details.missingInCsv++;
+      if (officialAmount.units === 0n) zeroWithoutPair.siconfi++;
+    }
   }
   details.differences.sort((left, right) => left.key.localeCompare(right.key, 'pt-BR'));
-  return { ...details, matched };
+  return { ...details, matched, zeroWithoutPair };
 }
 
 type PageLoader = (filters: Filters, offset: number, signal: AbortSignal, limit: number) => Promise<HistoryPage>;

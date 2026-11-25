@@ -136,6 +136,7 @@ test('consulta as oito classes e todas as páginas, soma duplicatas e preserva d
   ]);
   assert.equal(results[0].missingInCsv, 1);
   assert.equal(results[0].missingInSiconfi, 1);
+  assert.deepEqual(results[0].zeroWithoutPair, { csv: 1, siconfi: 1 });
   assert.equal(results[1].state, 'Conforme');
 });
 

@@ -1,4 +1,4 @@
-import { Component, input, signal } from '@angular/core';
+import { Component, computed, input, signal } from '@angular/core';
 import type { OnChanges, OnDestroy } from '@angular/core';
 import type { BalanceDirection, MonthlyBalances } from './monthly-balances.ts';
 import { historyService } from './siconfi-history.ts';
@@ -21,6 +21,8 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly busy = signal(false);
   readonly status = signal('');
   readonly results = signal<DirectionResult[]>([]);
+  readonly needsAttention = computed(() => this.results().some(({ state }) =>
+    state === 'Divergente' || state === 'Parcial' || state === 'Inconclusiva'));
   readonly pages = signal({ anterior: 1, posterior: 1 });
 
   ngOnChanges(): void {

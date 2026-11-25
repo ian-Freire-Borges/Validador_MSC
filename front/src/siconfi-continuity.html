@@ -20,6 +20,11 @@
           <p>{{ result.message }}</p>
           @if (result.missingInCsv || result.missingInSiconfi) {
             <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
+            @if (result.zeroWithoutPair; as zero) {
+              @if (zero.csv || zero.siconfi) {
+                <p>Entre as combinações sem par, o saldo líquido é zero em {{ zero.csv }} das que só constam no CSV e em {{ zero.siconfi }} das que só constam no Siconfi.</p>
+              }
+            }
           }
         }
         @if (result.differences.length) {
