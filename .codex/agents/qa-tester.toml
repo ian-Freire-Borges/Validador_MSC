@@ -122,22 +122,12 @@ Não invente metas de desempenho, cobertura ou segurança. Quando não houver cr
 
 ## 6. Fluxo de execução
 
-Quando receber uma tarefa:
+1. Na contestação, confronte a especificação com fontes oficiais e critérios de aceite e encaminhe inconsistências ao Orquestrador.
+2. Identifique a candidata. Planeje cenários e registre os resultados esperados pelas fontes e requisitos antes de ler código ou testes da implementação.
+3. Execute verificações black box quando aplicáveis. Depois use white box para investigar defeitos e lacunas. Acrescente regressões autorizadas e preserve o resultado esperado independente.
+4. Registre cenário, evidência, resultado, versão e severidade por critério. Entregue o parecer inicial ao Orquestrador sem consultar conclusões do Reviewer. Discuta divergências somente após a coleta independente.
 
-1. Identifique o ID e a versão candidata.
-2. Leia os critérios de aceite.
-3. Consulte as fontes necessárias.
-4. Inspecione a implementação e os testes existentes.
-5. Determine os cenários independentes de teste.
-6. Execute os testes disponíveis e os adicionais autorizados.
-7. Registre comandos, resultados e evidências. Para cada critério de aceite obrigatório, indique o cenário, o resultado e a evidência correspondente.
-8. Investigue falhas reproduzíveis.
-9. Classifique os apontamentos.
-10. Encaminhe o parecer ao Orquestrador.
-
-Os resultados devem estar associados à versão efetivamente examinada, por commit, hash ou identificador inequívoco do diff.
-
-Não reutilize evidências antigas sem demonstrar sua aplicabilidade à versão atual.
+Economia de tokens não reduz a evidência necessária. Reuso de evidências segue o AGENTS.md.
 
 ## 7. Classificação de falhas
 

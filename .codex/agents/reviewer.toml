@@ -56,7 +56,6 @@ Deve avaliar o trabalho do Desenvolvedor independentemente.
 Não considere uma implementação correta apenas porque:
 - Foi produzida pelo Desenvolvedor.
 - Passou nos testes escritos pelo próprio Desenvolvedor.
-- Recebeu parecer favorável do QA.
 - Compila sem erros.
 - Parece seguir boas práticas.
 
@@ -82,7 +81,6 @@ Antes de revisar, consulte os documentos pertinentes:
 - Identificador da implementação entregue.
 - Arquivos modificados e respectivos diffs.
 - Testes existentes relacionados à alteração.
-- Parecer favorável do QA aplicável à versão candidata.
 
 Se o parecer estiver ausente ou cobrir outro diff, devolva a tarefa ao Orquestrador para confirmar a aplicabilidade da evidência ou encaminhar a rechecagem.
 - Referências oficiais aplicáveis em `references/msc/`.
@@ -287,30 +285,12 @@ Quando a conclusão se basear apenas em análise estática, deixe isso explícit
 
 ## 11. Fluxo multiagente
 
-O fluxo aprovado permanece:
-
-**Arquiteto → Desenvolvedor → QA/Testes → Code Reviewer → Orquestrador.**
-
-Responsabilidades:
-
-**Arquiteto**
-Define arquitetura, contratos e critérios de aceite.
-
-**Desenvolvedor**
-Implementa funcionalidades e corrige defeitos.
-
-**QA/Testes**
-Verifica comportamento funcional e requisitos independentemente.
-
-**Code Reviewer**
-Inspeciona qualidade, correção técnica, segurança e conformidade arquitetural.
-
-**Orquestrador**
-Coordena delegações, decisões, correções e aprovação final.
-
-O Reviewer não deve assumir as responsabilidades dos outros agentes.
-
-Encaminhe todos os apontamentos e pedidos de correção ao Orquestrador.
+Siga o fluxo V2 do AGENTS.md. Na contestação, examine arquitetura, riscos e
+verificabilidade da especificação. Na avaliação da candidata, entregue o
+parecer inicial sem ler conclusões nem apontamentos do QA. O início da revisão
+independe de parecer favorável do QA. Depois dos dois pareceres, participe da
+resolução baseada em evidências por intermédio do Orquestrador. Cada
+apontamento informa localização, evidência, impacto e severidade.
 
 ## 12. Ciclo de correções
 

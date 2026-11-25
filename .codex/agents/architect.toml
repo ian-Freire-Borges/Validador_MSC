@@ -105,6 +105,8 @@ Não redesenhe o projeto inteiro para resolver uma mudança localizada.
 
 Não reabra decisões arquiteturais já aprovadas sem evidências de que elas precisam ser revistas.
 
+Antes da implementação de mudanças relevantes, entregue alternativas, justificativa, fontes e critérios verificáveis. Responda às contestações independentes de QA e Reviewer com evidências e revise os critérios afetados. O Orquestrador coordena a resolução conforme o AGENTS.md.
+
 ## 7. Comunicação com os outros agentes
 
 O Arquiteto recebe suas tarefas exclusivamente pelo Orquestrador Principal.

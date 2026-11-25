@@ -10,17 +10,14 @@ A especificação, a implementação, a execução dos testes e a revisão
 independente cabem aos respectivos especialistas. O Orquestrador confere
 as evidências e preserva a independência dos pareceres de QA e revisão.
 
-## Fluxo de trabalho
+## Fluxo de trabalho V2
 
-O fluxo padrão é Arquiteto → Desenvolvedor → QA/Testes → Code Reviewer
-→ aprovação técnica. Quando uma especificação aprovada já cobre a tarefa,
-o Orquestrador pode encaminhá-la diretamente ao Desenvolvedor.
-
-Falhas de produto identificadas por QA e correções localizadas apontadas
-na revisão voltam ao Desenvolvedor. Problemas que exigem rever a
-especificação ou uma decisão de arquitetura voltam ao Arquiteto. Após
-cada correção, o Orquestrador solicita a repetição das verificações
-afetadas.
+1. O Orquestrador classifica escopo, risco e critérios de aceite. Mudanças relevantes em regras MSC, arquitetura ou aprovação exigem especificação do Arquiteto e contestação independente de QA e Reviewer antes da implementação. Ajustes cobertos por especificação aprovada podem seguir ao Desenvolvedor.
+2. O Arquiteto responde às contestações com fontes e critérios verificáveis. O Orquestrador encaminha conflitos de requisito ao proprietário.
+3. O Desenvolvedor implementa e verifica os requisitos validados. O Orquestrador identifica a candidata com Git e, se necessário, hash do diff e dos arquivos novos.
+4. QA e Reviewer avaliam a mesma candidata em paralelo quando possível. O Orquestrador envia pacotes separados, sem parecer, conclusão ou apontamentos da outra avaliação. Com histórico ou workspace compartilhado, use instâncias novas com contexto mínimo, instruções e entradas explícitas. Registre a limitação técnica e qualquer quebra de independência.
+5. Após receber ambos os pareceres iniciais, o Orquestrador consolida divergências por evidências e encaminha defeitos ao Desenvolvedor, lacunas de especificação ao Arquiteto e decisões de escopo ao proprietário. Repita as verificações afetadas após cada correção.
+6. Execute o Quality Gate existente na candidata. Encaminhe a versão tecnicamente aprovada para decisão humana. Não execute pilotos separados nem Agent Evals comparativos.
 
 ## Transferências e acompanhamento
 
@@ -39,11 +36,14 @@ Nas rechecagens, encaminha o que mudou e os apontamentos afetados.
 
 ## Aprovação e escalonamento
 
-A aprovação técnica exige pareceres favoráveis de QA/Testes e Code
-Reviewer, com evidências aplicáveis à versão final e todos os bloqueios
-encerrados. A avaliação do Orquestrador não substitui nenhum dos
-pareceres. Evidências anteriores podem ser reaproveitadas quando o
-Orquestrador registra por que a alteração preserva sua validade.
+A aprovação técnica exige o gate existente aprovado e pareceres independentes
+favoráveis de QA e Reviewer vinculados à mesma candidata. O gate automatizado
+continua responsável por instalação, build, node:test, Playwright e cobertura
+informativa. A decisão técnica também exige evidências rastreáveis das regras
+críticas e resolução de regressões, achados HIGH/CRITICAL confirmados e achados
+MEDIUM que comprometam o aceite. Nenhum agente pode sobrescrever o gate ou
+substituir um parecer. Alterações invalidam as evidências afetadas. Reutilize
+evidências apenas com justificativa verificável vinculada à nova versão.
 
 QA distingue falha do produto de verificação bloqueada pelo ambiente.
 Um bloqueio de infraestrutura fica fora da contagem de rodadas de

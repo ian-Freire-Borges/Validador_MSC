@@ -1,36 +1,52 @@
 import assert from 'node:assert/strict';
+import { on } from 'node:events';
 import { test } from 'node:test';
 import { Worker } from 'node:worker_threads';
 import { columns } from '../src/catalog.ts';
 
-test('Worker carrega o catálogo, publica progresso e retorna a validação', { timeout: 10000 }, async t => {
+const options = { timeout: 10000 };
+
+async function runWorker(t, file, failure) {
   const location = new URL('../src/validation.worker.ts', import.meta.url).href;
   const entrypoint = `
-    import { parentPort } from 'node:worker_threads';
-    globalThis.postMessage = message => parentPort.postMessage(message);
+    import { parentPort, workerData } from 'node:worker_threads';
+    globalThis.postMessage = message => parentPort.postMessage({ message });
     globalThis.addEventListener = (event, callback) => {
-      if (event === 'message') parentPort.on('message', data => callback({ data }));
+      if (event === 'message') parentPort.on('message', async data => {
+        await callback({ data });
+        parentPort.postMessage({ callbackFinished: true });
+      });
     };
     await import(${JSON.stringify(location)});
+    if (workerData === 'read') {
+      Blob.prototype.arrayBuffer = async () => { throw new Error('Falha de leitura simulada'); };
+    }
+    if (workerData === 'decoder') {
+      globalThis.TextDecoder = class {
+        constructor() { throw new Error('Falha inesperada do decodificador'); }
+      };
+    }
   `;
-  const worker = new Worker(new URL('data:text/javascript,' + encodeURIComponent(entrypoint)));
+  const worker = new Worker(new URL('data:text/javascript,' + encodeURIComponent(entrypoint)), { workerData: failure });
   t.after(() => worker.terminate());
 
+  const events = on(worker, 'message', { signal: t.signal, close: ['exit'] });
+  const messages = [];
+  worker.postMessage({ file, encoding: 'UTF-8' });
+  for await (const [event] of events) {
+    if (event.callbackFinished) return messages;
+    messages.push(event.message);
+  }
+  assert.fail('Worker encerrou antes de concluir o callback');
+}
+
+test('Worker carrega o catálogo, publica progresso e retorna a validação', options, async t => {
   const csv = ['3550308EX;2026-01', columns.join(';'),
     '111110100;10131;PO;;;;;;;;;;;10;beginning_balance;D',
     '111110100;10131;PO;;;;;;;;;;;10;period_change;C'].join('\n');
-  const messages = [];
-  const result = await new Promise((resolve, reject) => {
-    worker.on('error', reject);
-    worker.on('message', message => {
-      messages.push(message.type);
-      if (message.type === 'complete') resolve(message.result);
-      if (message.type === 'error') reject(new Error(message.stage));
-    });
-    worker.postMessage({ file: new Blob([csv]), encoding: 'UTF-8' });
-  });
-
-  assert.deepEqual(messages, ['progress', 'progress', 'complete']);
+  const messages = await runWorker(t, new Blob([csv]));
+  assert.deepEqual(messages.map(message => message.type), ['progress', 'progress', 'complete']);
+  const { result } = messages.at(-1);
   assert.equal(result.records, 2);
   assert.equal(result.catalogCompatible, true);
   assert.equal(result.encoding, 'UTF-8');
@@ -41,4 +57,26 @@ test('Worker carrega o catálogo, publica progresso e retorna a validação', { 
   assert.deepEqual(result.balances.notices.map(notice => [notice.id, notice.type, notice.totals.at(-1).value]), [
     ['SAL-EQU-TIPO', 'beginning_balance', '10'], ['SAL-EQU-TIPO', 'period_change', '−10'],
   ]);
+});
+
+test('Worker retorna erro de leitura quando o Blob rejeita arrayBuffer', options, async t => {
+  const messages = await runWorker(t, new Blob(['3550308EX;2026-01']), 'read');
+  assert.deepEqual(messages, [{ type: 'error', stage: 'leitura' }]);
+});
+
+test('Worker retorna erro de validação quando o TextDecoder falha após a leitura', options, async t => {
+  const messages = await runWorker(t, new Blob(['3550308EX;2026-01']), 'decoder');
+  assert.deepEqual(messages.map(message => message.type), ['progress', 'progress', 'error']);
+  assert.deepEqual(messages.at(-1), { type: 'error', stage: 'validação' });
+});
+
+test('Worker conclui a validação de UTF-8 inválido com achado L01', options, async t => {
+  const messages = await runWorker(t, new Blob([Uint8Array.of(0x80)]));
+  assert.deepEqual(messages.map(message => message.type), ['progress', 'progress', 'complete']);
+  const { result } = messages.at(-1);
+  assert.equal(result.rules.L01.state, 'Falhou');
+  const finding = result.findings.find(finding => finding.id === 'L01');
+  assert.equal(finding?.status, 'Falhou');
+  assert.equal(finding.byteOffset, 0);
+  assert.equal(finding.observed, '0x80');
 });
