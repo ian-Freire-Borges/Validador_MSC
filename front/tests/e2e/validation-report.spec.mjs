@@ -264,15 +264,14 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
 });
 
 test('trata HTTP 503 como comparação inconclusiva apenas em Avisos', async ({ page, context, baseURL }) => {
-  await routeSiconfi(context, baseURL, route => route.fulfill({
-    status: 503,
-    headers: { 'Access-Control-Allow-Origin': baseURL },
-  }));
+  await routeSiconfi(context, baseURL, (route, filters) => filters.get('classe_conta') === '1'
+    ? route.fulfill({ status: 503, headers: { 'Access-Control-Allow-Origin': baseURL } })
+    : fulfillSiconfi(route, baseURL, []));
   await validateFile(page, '2914604EX', balances);
 
   await page.getByRole('tab', { name: 'Avisos' }).click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
-  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(2);
+  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(2, { timeout: 25_000 });
   await expect(notices.getByText('O Siconfi respondeu com erro HTTP 503.', { exact: true })).toHaveCount(2);
   await expect(notices.getByText('Divergência confirmada')).toHaveCount(0);
 
@@ -374,3 +373,81 @@ test('prepara todos os erros para impressão, exclui Avisos e restaura aba e pá
   await expect(pagination).toContainText('Página 2 de 2');
   await expect(errorLabels).toHaveText(expectedErrors.slice(50));
 });
+
+test('mantém divergências confiáveis em Avisos quando outro saldo tem NR inválida', async ({ page, context, baseURL }) => {
+  const accountWithInvalidNr = '621100000';
+  const relatedAccount = '621200000';
+  const validAccount = '211110101';
+  const nr = '00000001';
+  const csvWithNr = (account, value, revenueCode) =>
+    [account, powerCode, 'PO', revenueCode, 'NR', ...Array(8).fill(''), value, 'ending_balance', 'D'].join(';');
+  await mockSiconfi(context, baseURL, filters => {
+    const month = Number(filters.get('me_referencia'));
+    const accountClass = Number(filters.get('classe_conta'));
+    if (month !== 11) return [];
+    const common = { cod_ibge: 2914604, exercicio: 2026, mes_referencia: month, classe_conta: accountClass,
+      tipo_matriz: 'MSCC', tipo_valor: 'beginning_balance', poder_orgao: powerCode, natureza_conta: 'D' };
+    if (accountClass === 2) return [{ ...common, conta_contabil: validAccount, valor: 8 }];
+    if (accountClass === 6) return [
+      { ...common, conta_contabil: accountWithInvalidNr, natureza_receita: nr, valor: 50 },
+      { ...common, conta_contabil: relatedAccount, natureza_receita: nr, valor: 12 },
+    ];
+    return [];
+  });
+  await validateFile(page, '2914604EX', [
+    csvWithNr(accountWithInvalidNr, '20', 'ERRO'),
+    csvWithNr(relatedAccount, '13', nr),
+    row(validAccount, '10', 'ending_balance', 'D'),
+  ]);
+
+  const result = page.getByRole('tabpanel', { name: 'Resultado' });
+  const finding = result.getByRole('row').filter({ hasText: 'C03' });
+  await expect(finding).toHaveCount(1);
+  await expect(finding).toContainText('Linha 3');
+  await expect(finding).toContainText(accountWithInvalidNr);
+  await expect(result.getByText('Divergência confirmada')).toHaveCount(0);
+
+  await page.getByRole('tab', { name: 'Avisos' }).click();
+  const notices = page.getByRole('tabpanel', { name: 'Avisos' });
+  await expect(notices.getByText('Parcial', { exact: true })).toBeVisible({ timeout: 25_000 });
+  await expect(notices.getByText('Há combinações excluídas por dados inválidos no CSV.')).toBeVisible();
+  const differences = notices.getByRole('row', { name: /Divergência confirmada/ });
+  await expect(differences).toHaveCount(2);
+  await expect(differences.filter({ hasText: validAccount })).toContainText('Diferença de R$ 2');
+  await expect(differences.filter({ hasText: relatedAccount })).toContainText('Diferença de R$ 1');
+  await expect(notices.getByText(accountWithInvalidNr, { exact: false })).toHaveCount(0);
+  await expect(notices.getByText('combinações sem par', { exact: false })).toHaveCount(0);
+});
+
+test('informa que a comparação está indisponível quando o CSV bloqueia as duas direções', async ({ page, context, baseURL }) => {
+  const calls = [];
+  await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
+  await validateFile(page, '2914604EX', [row(debitAccount, '1', 'desconhecido', 'D')]);
+
+  await page.getByRole('tab', { name: 'Avisos' }).click();
+  const notices = page.getByRole('tabpanel', { name: 'Avisos' });
+  await expect(notices.getByRole('status')).toHaveText('Comparação indisponível devido a dados inválidos ou incompletos no CSV.');
+  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(2);
+  expect(calls).toHaveLength(0);
+});
+
+for (const [period, type, referenceMonth] of [
+  ['2026-01', 'ending_balance', 'fevereiro de 2026'],
+  ['2026-12', 'beginning_balance', 'novembro de 2026'],
+]) {
+  test(`não anuncia comparação concluída quando o CSV bloqueia a única direção aplicável em ${period}`, async ({ page, context, baseURL }) => {
+    const calls = [];
+    await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
+    await page.goto('/');
+    await selectFile(page, '2914604EX', period, [row('699999999', '1', type, 'D')], 'msc-sintetica.csv');
+    await page.getByRole('button', { name: 'Validar', exact: true }).click();
+
+    await page.getByRole('tab', { name: 'Avisos' }).click();
+    const notices = page.getByRole('tabpanel', { name: 'Avisos' });
+    await expect(notices.getByRole('status')).toHaveText('Confira o resultado de cada direção.');
+    await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(1);
+    await expect(notices.getByText('Não aplicável', { exact: true })).toHaveCount(1);
+    await expect(notices.getByText('Referência ' + referenceMonth, { exact: false })).toBeVisible();
+    expect(calls).toHaveLength(0);
+  });
+}

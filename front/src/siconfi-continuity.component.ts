@@ -52,7 +52,11 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
       }, pages => {
         if (this.request === request) this.status.set('Páginas consultadas no Siconfi: ' + pages + '.');
       });
-      if (this.request === request) this.status.set('Comparação concluída. Confira o resultado de cada direção.');
+      if (this.request === request) {
+        this.status.set(balances.anterior.blocked && balances.posterior.blocked
+          ? 'Comparação indisponível devido a dados inválidos ou incompletos no CSV.'
+          : 'Confira o resultado de cada direção.');
+      }
     } catch (error) {
       if (this.request === request) this.status.set(error instanceof Error ? error.message : 'A comparação não pôde ser concluída.');
     } finally {

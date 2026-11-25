@@ -2,7 +2,7 @@ import { widths } from './catalog.ts';
 import { add, decimal, format, negate } from './decimal.ts';
 import type { Decimal } from './decimal.ts';
 import { accumulateBalance, balanceKey, signedBalance } from './monthly-balances.ts';
-import type { AccountDimension, BalanceDirection, MonthlyBalance, MonthlyBalances } from './monthly-balances.ts';
+import type { AccountDimension, BalanceDirection, BalanceExclusion, MonthlyBalance, MonthlyBalances } from './monthly-balances.ts';
 import { HistoryError } from './siconfi-history.ts';
 import type { Filters, HistoryPage, HistoryRow } from './siconfi-history.ts';
 
@@ -21,7 +21,7 @@ type DirectionDetails = { differences: MonthlyDifference[]; missingInCsv: number
 export type DirectionResult = {
   id: BalanceDirection;
   month: number;
-  state: 'Conforme' | 'Divergente' | 'Inconclusiva' | 'Não aplicável' | 'Sem referência na API';
+  state: 'Conforme' | 'Divergente' | 'Parcial' | 'Inconclusiva' | 'Não aplicável' | 'Sem referência na API';
   message: string;
 } & DirectionDetails;
 
@@ -78,15 +78,42 @@ export function normalizeMonthlyRow(row: HistoryRow): MonthlyBalance {
   return { key: balanceKey(account, dimensions), net: signedBalance(magnitude(row.valor), side) };
 }
 
-function compare(localBalances: MonthlyBalance[], officialBalances: Map<string, Decimal>): DirectionDetails {
-  const local = new Map(localBalances.map(balance => [balance.key, balance.net]));
+function exclusionFilter(exclusions: BalanceExclusion[]): (key: string) => boolean {
+  const exact = new Set<string>();
+  const masks = new Map<string, string[][]>();
+  for (const exclusion of exclusions) {
+    if ('exact' in exclusion) {
+      exact.add(exclusion.exact);
+    } else {
+      const pairs = masks.get(exclusion.account) ?? [];
+      pairs.push(exclusion.pairs);
+      masks.set(exclusion.account, pairs);
+    }
+  }
+  return key => {
+    if (exact.has(key)) return true;
+    if (!masks.size) return false;
+    const [account, ...dimensions] = key.split(' · ');
+    const accountMasks = masks.get(account);
+    return accountMasks?.some(mask => mask.every(pair => dimensions.includes(pair))) ?? false;
+  };
+}
+
+function compare(
+  localBalances: MonthlyBalance[], officialBalances: Map<string, Decimal>, completedClasses: Set<string>, exclusions: BalanceExclusion[],
+): DirectionDetails & { matched: number } {
+  const excluded = exclusionFilter(exclusions);
+  const local = new Map(localBalances.filter(({ key }) => completedClasses.has(key[0]) && !excluded(key))
+    .map(({ key, net }) => [key, net]));
   const details: DirectionDetails = { differences: [], missingInCsv: 0, missingInSiconfi: 0 };
+  let matched = 0;
   for (const [key, localAmount] of local) {
     const officialAmount = officialBalances.get(key);
     if (!officialAmount) {
       details.missingInSiconfi++;
       continue;
     }
+    matched++;
     const difference = add(localAmount, negate(officialAmount));
     if (difference.units === 0n) continue;
     details.differences.push({
@@ -94,10 +121,10 @@ function compare(localBalances: MonthlyBalance[], officialBalances: Map<string, 
     });
   }
   for (const key of officialBalances.keys()) {
-    if (!local.has(key)) details.missingInCsv++;
+    if (!local.has(key) && !excluded(key)) details.missingInCsv++;
   }
   details.differences.sort((left, right) => left.key.localeCompare(right.key, 'pt-BR'));
-  return details;
+  return { ...details, matched };
 }
 
 type PageLoader = (filters: Filters, offset: number, signal: AbortSignal, limit: number) => Promise<HistoryPage>;
@@ -129,9 +156,17 @@ export async function compareMonthlyBalances(
       continue;
     }
     const official = new Map<string, Decimal>();
-    try {
-      if (rateLimited) throw new HistoryError('Consulta interrompida após atingir o limite do Siconfi (HTTP 429).');
-      for (let accountClass = 1; accountClass <= 8; accountClass++) {
+    const completedClasses = new Set<string>();
+    const limitations = new Set<string>();
+    if (local[id].exclusions.length) limitations.add('Há combinações excluídas por dados inválidos no CSV.');
+    for (let accountClass = 1; accountClass <= 8; accountClass++) {
+      signal.throwIfAborted();
+      if (rateLimited || deadline.aborted || queries >= maximumPages) {
+        limitations.add(rateLimited ? 'Consulta interrompida após atingir o limite do Siconfi (HTTP 429).' : budgetMessage);
+        break;
+      }
+      const classBalances = new Map<string, Decimal>();
+      try {
         const filters: Filters = { entity: local.entity, year: '2026', month: String(month), accountClass: String(accountClass), valueType: reference };
         let offset: number | null = 0;
         while (offset !== null) {
@@ -142,29 +177,35 @@ export async function compareMonthlyBalances(
           requestSignal.throwIfAborted();
           for (const row of page.rows) {
             const balance = normalizeMonthlyRow(row);
-            accumulateBalance(official, balance.key, balance.net);
+            if (balance.key[0] !== filters.accountClass) ambiguous();
+            accumulateBalance(classBalances, balance.key, balance.net);
           }
           offset = page.nextOffset;
           onPage?.(queries);
         }
+        completedClasses.add(filters.accountClass);
+        for (const [key, net] of classBalances) official.set(key, net);
+      } catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof HistoryError && error.status === 429) rateLimited = true;
+        limitations.add(deadline.aborted ? budgetMessage : error instanceof HistoryError
+          ? error.message : 'A consulta ao Siconfi não foi concluída.');
+        if (rateLimited || deadline.aborted) break;
       }
-      if (official.size === 0) {
-        publish('Sem referência na API', 'A API retornou zero registros.');
-        continue;
-      }
-      const details = compare(local[id].balances, official);
-      if (details.missingInCsv || details.missingInSiconfi) {
-        publish('Inconclusiva', 'Há combinações sem saldo correspondente.', details);
-      } else if (details.differences.length) {
-        publish('Divergente', 'Foram encontradas diferenças entre os saldos do CSV e os do Siconfi.', details);
-      } else {
-        publish('Conforme', 'Os saldos comparados coincidem.');
-      }
-    } catch (error) {
-      signal.throwIfAborted();
-      if (error instanceof HistoryError && error.status === 429) rateLimited = true;
-      publish('Inconclusiva', deadline.aborted ? budgetMessage :
-        error instanceof HistoryError ? error.message : 'A consulta ao Siconfi não foi concluída.');
+    }
+    if (completedClasses.size === 8 && official.size === 0) {
+      publish('Sem referência na API', [...limitations].join(' '));
+      continue;
+    }
+    const { matched, ...details } = compare(local[id].balances, official, completedClasses, local[id].exclusions);
+    if (limitations.size) {
+      publish(matched ? 'Parcial' : 'Inconclusiva', [...limitations].join(' '), details);
+    } else if (details.missingInCsv || details.missingInSiconfi) {
+      publish('Inconclusiva', 'Há combinações sem saldo correspondente.', details);
+    } else if (details.differences.length) {
+      publish('Divergente', 'Foram encontradas diferenças entre os saldos do CSV e os do Siconfi.', details);
+    } else {
+      publish('Conforme', 'Os saldos comparados coincidem.', details);
     }
   }
 }

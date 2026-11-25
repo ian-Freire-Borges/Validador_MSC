@@ -228,6 +228,9 @@ export function validate(
         }
         let po = false;
         const pairs: [string, string][] = [];
+        const trustedPairs: [string, string][] = [];
+        const repeatedTypes = new Set<string>();
+        let uncertainPair = false;
         const slots = new Map<string, number>();
         const repeated: BalanceOrigin[] = [];
         for (let pair = 1; pair <= 6; pair++) {
@@ -243,7 +246,10 @@ export function validate(
           if (permitted && complete) {
             const earlier = slots.get(kind);
             if (earlier === undefined) slots.set(kind, pair);
-            else repeated.push({ line: lineCount, field: 'TIPO repetido: ' + kind, slots: [earlier, pair] });
+            else {
+              repeated.push({ line: lineCount, field: 'TIPO repetido: ' + kind, slots: [earlier, pair] });
+              repeatedTypes.add(kind);
+            }
             pairs.push([kind, ic]);
           }
 
@@ -251,6 +257,7 @@ export function validate(
             Object.keys(catalog.widths).join(', '));
           const domainId = Object.hasOwn(domainRules, kind) ? domainRules[kind as keyof typeof domainRules] : undefined;
           if (!complete || !known) {
+            uncertainPair = true;
             const reason = complete ? 'tipo' : 'par-incompleto';
             block('C03', reason);
             block('C04', reason);
@@ -261,12 +268,15 @@ export function validate(
 
           const width = catalog.widths[kind];
           const wide = check('C03', ic.length === width && /^[0-9]+$/.test(ic), icAt, ic, width + ' dígitos ASCII para ' + kind);
-          if (permitted) check('C04', permitted.includes(kind), kindAt, kind, permitted.join(', '));
+          const allowed = permitted?.includes(kind) ?? false;
+          if (permitted) check('C04', allowed, kindAt, kind, permitted.join(', '));
           else block('C04', 'conta');
+          let inDomain = true;
           if (domainId) {
-            if (wide) check(domainId, catalog.domains[kind].includes(ic), icAt, ic, kind === 'PO' ? 'Código da aba PO do Anexo II' : catalog.domains[kind].join(', '));
+            if (wide) inDomain = check(domainId, catalog.domains[kind].includes(ic), icAt, ic, kind === 'PO' ? 'Código da aba PO do Anexo II' : catalog.domains[kind].join(', '));
             else block(domainId, 'largura');
           }
+          if (monthly && wide && allowed && inDomain) trustedPairs.push([kind, ic]);
         }
         if (!contentBlocked) check('C05', po, location(lineCount), 'Nenhum par IC/PO completo', 'Pelo menos um par IC/PO completo');
         if (account) {
@@ -276,8 +286,12 @@ export function validate(
           if (!permitted) balances.blockFile('conta', { rule: 'C01', line: lineCount, field: 'CONTA' });
           else balances.record(lineCount, account, pairs, findings.slice(beforeContent).map(balanceOrigin).concat(repeated),
             value, typeIndex, fields[15], findings.slice(beforeValues, beforeContent).map(balanceOrigin));
-          monthly?.collector.record(account, pairs, fields[14], value, fields[15],
-            Boolean(permitted) && beforeValues === findings.length && repeated.length === 0);
+          if (monthly) {
+            const complete = Boolean(permitted) && beforeContent === findings.length && repeated.length === 0;
+            const dimensions = complete ? pairs : uncertainPair ? [] : trustedPairs.filter(([kind]) => !repeatedTypes.has(kind));
+            monthly.collector.record({ account: permitted ? account : undefined, dimensions, complete },
+              fields[14], value, fields[15], beforeValues === beforeContent);
+          }
         }
       }
     }

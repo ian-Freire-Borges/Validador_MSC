@@ -13,10 +13,14 @@
         <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável' && result.state !== 'Sem referência na API') { · Referência {{ referenceMonth(result) }} }</p>
         @if (result.state === 'Sem referência na API') {
           <p>A consulta pública do Siconfi não retornou registros para o saldo de {{ referenceMonth(result) }}.</p>
-        } @else if (result.missingInCsv || result.missingInSiconfi) {
-          <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
+          @if (result.message) {
+            <p>{{ result.message }}</p>
+          }
         } @else {
           <p>{{ result.message }}</p>
+          @if (result.missingInCsv || result.missingInSiconfi) {
+            <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
+          }
         }
         @if (result.differences.length) {
           <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'Detalhes da comparação com a competência ' + referenceMonth(result)">
