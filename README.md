@@ -32,6 +32,22 @@ npm.cmd run test:e2e
 
 O Playwright serve o build Angular localmente e usa CSVs sintéticos e respostas simuladas do Siconfi.
 
+### Gate local e revisão
+
+Em `front/`, com o Chromium headless instalado, execute `npm.cmd run test:gate`. O comando reinstala as dependências pelo lockfile e executa as suítes Node e Playwright com o build Angular. Uma suíte vazia, falhas, cancelamentos, testes pulados ou pendentes, inconsistências no lockfile e falhas de build reprovam o gate. Encerre servidores de desenvolvimento do projeto antes de executar caso estejam usando os executáveis em `node_modules`.
+
+O gate grava a cobertura por arquivo em `front/dist/test-gate/node-coverage.json` e o relatório de navegador em `front/dist/test-gate/playwright.json`. A base é o commit `059f44b`, medida com Node.js 24.18 sobre os arquivos de `src/**/*.ts` carregados pelos testes do Node. A cobertura de referência é **97,87% de linhas, 95,52% de branches e 99,18% de funções**. As diferenças em pontos percentuais são informativas. O relatório do Playwright registra o comportamento no navegador.
+
+A aprovação exige revisão de QA e de código, além do gate automatizado. Registre o commit ou o commit-base e o identificador do diff, as versões do ambiente, o comando executado e os dois relatórios. Use o checklist para reunir as evidências aplicáveis à mudança.
+
+- **Estrutura e cadastro (L01/L02, E01–E10)**. Confira codificação, leiaute, ente e competência. Registre um caso aceito, uma falha e, quando aplicável, uma verificação bloqueada com o motivo.
+- **Conteúdo (C01–C08)**. Confira conta, tipo, formato e domínios de informação complementar nos casos alterados. Confira também se o relatório aponta a linha, o campo e a conta quando disponíveis.
+- **Saldos normativos (SAL-CONS-01 e SAL-EQU-01)**. Confira a consistência e o equilíbrio com valores exatos, incluindo um caso que passa e um que diverge.
+- **Consulta e avisos mensais (SICONFI-HIST-001 e SICONFI-SAL-MES-001)**. Confira os filtros enviados, paginação, cancelamento, ausência de referência na API e a separação entre divergências confirmadas, combinações sem par e erros da pré-validação.
+- **Relatório e impressão**. Confira ausência de falhas, falhas, resultado incompleto, abas por teclado e impressão da lista inteira de erros quando esses fluxos forem afetados.
+
+Para regras contábeis, associe cada evidência ao identificador da regra, à versão e à seção da [referência MSC aplicável](references/msc/README.md), à entrada de teste e ao resultado esperado e obtido. Registre também os pareceres de QA e revisão para o mesmo candidato. A aprovação do responsável pelo repositório deve identificar a versão aprovada antes da integração. Push, merge e deploy seguem as autorizações do projeto.
+
 Para separar erros do compilador das restrições de acesso do bundler, execute `node_modules/.bin/ngc.cmd -p tsconfig.json` e `node_modules/.bin/tsc.cmd -p tsconfig.worker.json`. Em um ambiente capaz de executar o esbuild, rode também o build oficial completo.
 
 ## Catálogo

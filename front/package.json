@@ -8,7 +8,8 @@
     "start": "ng serve --host 127.0.0.1",
     "build": "ng build",
     "test": "node --test tests/*.test.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:gate": "node scripts/test-gate.mjs"
   },
   "dependencies": {
     "@angular/core": "~22.0.0",
