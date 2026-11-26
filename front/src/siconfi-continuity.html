@@ -24,8 +24,8 @@
           }
         }
         @if (rows().length) {
-          <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'Detalhes da comparação com a competência ' + referenceMonth(result)">
-            <table class="error-table report-advisories">
+          <div class="table-scroll report-findings" role="region" tabindex="0" [attr.aria-label]="'Detalhes da comparação com a competência ' + referenceMonth(result)">
+            <table class="error-table">
               <caption class="sr-only">Avisos da comparação entre competências</caption>
               <thead>
                 <tr>
@@ -38,18 +38,24 @@
                   <tr>
                     <td><span class="error-type error-type-content">Aviso</span></td>
                     <td>
-                      Conta <strong>{{ row.key }}</strong>. O saldo inicial da MSC é
-                      @if (row.local === null) {
-                        R$ 0,00 <small class="report-inferred">inferido</small>
-                      } @else {
-                        {{ advisoryBalance(row.local) }}
-                      }
-                      e difere do saldo final da competência anterior no Siconfi, de
-                      @if (row.official === null) {
-                        R$ 0,00 <small class="report-inferred">inferido</small>.
-                      } @else {
-                        {{ advisoryBalance(row.official) }}.
-                      }
+                      <strong>Divergência de saldo entre competências</strong>
+                      <div>Conta {{ row.key }}</div>
+                      <div>
+                        Saldo inicial da MSC:
+                        @if (row.local === null) {
+                          R$ 0,00 <small class="report-inferred">inferido</small>
+                        } @else {
+                          {{ advisoryBalance(row.local) }}
+                        }
+                      </div>
+                      <div>
+                        Saldo final da competência anterior no Siconfi:
+                        @if (row.official === null) {
+                          R$ 0,00 <small class="report-inferred">inferido</small>
+                        } @else {
+                          {{ advisoryBalance(row.official) }}
+                        }
+                      </div>
                     </td>
                   </tr>
                 }
