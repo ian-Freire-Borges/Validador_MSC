@@ -17,11 +17,18 @@ export type MonthlyDifference = {
   official: string;
   difference: string;
 };
+export type InferredDifference = {
+  key: string;
+  source: 'CSV' | 'Siconfi';
+  observed: string;
+  difference: string;
+};
 type DirectionDetails = {
   differences: MonthlyDifference[];
   missingInCsv: number;
   missingInSiconfi: number;
   zeroWithoutPair?: { csv: number; siconfi: number };
+  inferredDifferences?: InferredDifference[];
 };
 export type DirectionResult = {
   id: BalanceDirection;
@@ -112,12 +119,18 @@ function compare(
     .map(({ key, net }) => [key, net]));
   const details: DirectionDetails = { differences: [], missingInCsv: 0, missingInSiconfi: 0 };
   const zeroWithoutPair = { csv: 0, siconfi: 0 };
+  const inferredDifferences: InferredDifference[] = [];
+  const hasReference = [...officialBalances.keys()].some(key => !excluded(key));
   let matched = 0;
   for (const [key, localAmount] of local) {
     const officialAmount = officialBalances.get(key);
     if (!officialAmount) {
       details.missingInSiconfi++;
       if (localAmount.units === 0n) zeroWithoutPair.csv++;
+      else if (hasReference) {
+        const observed = format(localAmount);
+        inferredDifferences.push({ key, source: 'CSV', observed, difference: observed });
+      }
       continue;
     }
     matched++;
@@ -131,10 +144,12 @@ function compare(
     if (!local.has(key) && !excluded(key)) {
       details.missingInCsv++;
       if (officialAmount.units === 0n) zeroWithoutPair.siconfi++;
+      else inferredDifferences.push({ key, source: 'Siconfi', observed: format(officialAmount), difference: format(negate(officialAmount)) });
     }
   }
   details.differences.sort((left, right) => left.key.localeCompare(right.key, 'pt-BR'));
-  return { ...details, matched, zeroWithoutPair };
+  inferredDifferences.sort((left, right) => left.key.localeCompare(right.key, 'pt-BR'));
+  return { ...details, matched, zeroWithoutPair, inferredDifferences };
 }
 
 type PageLoader = (filters: Filters, offset: number, signal: AbortSignal, limit: number) => Promise<HistoryPage>;

@@ -203,6 +203,44 @@ test('descarta a classe inteira se a conta pertence a uma classe diferente da de
   assert.equal(partial.missingInCsv + partial.missingInSiconfi, 0);
 });
 
+test('calcula hipótese somente para chaves unilaterais não zero de classes confiáveis e com referência', async () => {
+  const data = local(12);
+  const extra = (code, amount) => ({ key: code + ' · PO 10131', net: decimal(amount) });
+  const masked = '111110601';
+  data.anterior.balances.push(extra('211110101', '9007199254740993.01'), extra('311110100', '7'),
+    extra(masked, '5'), extra('111110602', '0'));
+  data.anterior.exclusions.push({ account: masked, pairs: ['PO 10131'] });
+  const [result] = await run(data, async filters => {
+    if (filters.accountClass === '1') return page([reference,
+      { ...reference, conta_contabil: '111110603', valor: '2.5' },
+      { ...reference, conta_contabil: '111110604', valor: '2.5', natureza_conta: 'C' },
+      { ...reference, conta_contabil: masked, valor: '8' }]);
+    if (filters.accountClass === '3') throw new HistoryError('Falha simulada.');
+    return page();
+  });
+  assert.equal(result.state, 'Parcial');
+  assert.deepEqual(result.differences, []);
+  assert.equal(result.missingInCsv, 2);
+  assert.equal(result.missingInSiconfi, 2);
+  assert.deepEqual(result.zeroWithoutPair, { csv: 1, siconfi: 0 });
+  assert.deepEqual(result.inferredDifferences, [
+    { key: '111110603 · PO 10131', source: 'Siconfi', observed: '2.5', difference: '−2.5' },
+    { key: '111110604 · PO 10131', source: 'Siconfi', observed: '−2.5', difference: '2.5' },
+    { key: '211110101 · PO 10131', source: 'CSV', observed: '9007199254740993.01', difference: '9007199254740993.01' },
+  ]);
+  const [withMaskedReferenceOnly] = await run(data, async filters => filters.accountClass === '1'
+    ? page([{ ...reference, conta_contabil: masked }]) : page());
+  assert.deepEqual(withMaskedReferenceOnly.inferredDifferences, []);
+  const [onlyFailureAndEmptyClasses] = await run(data, async filters => {
+    if (filters.accountClass === '3') throw new HistoryError('Falha simulada.');
+    return page();
+  });
+  assert.deepEqual(onlyFailureAndEmptyClasses.inferredDifferences, []);
+  const [empty] = await run(data, async () => page());
+  assert.equal(empty.state, 'Sem referência na API');
+  assert.equal(empty.inferredDifferences, undefined);
+});
+
 test('interrompe no orçamento, no HTTP 429 e ao cancelar', async t => {
   let requests = 0;
   const budget = await run(local(), async (_filters, offset) => {

@@ -54,6 +54,36 @@
             </nav>
           }
         }
+        @if (result.inferredDifferences; as inferred) {
+          @if (inferred.length) {
+            @let hypothesisPage = hypothesisPages()[result.id];
+            @let first = (hypothesisPage - 1) * pageSize;
+            <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'Avisos com zero inferido para ' + referenceMonth(result)">
+              <table class="error-table report-advisories">
+                <caption>Avisos com saldo zero inferido pelo Validador</caption>
+                <thead><tr><th scope="col">Combinação</th><th scope="col">Saldo encontrado</th><th scope="col">Saldo inferido</th><th scope="col">Diferença hipotética (CSV menos Siconfi)</th></tr></thead>
+                <tbody>
+                  @for (entry of inferred.slice(first, first + pageSize); track entry.key) {
+                    <tr>
+                      <td>{{ entry.key }}</td>
+                      <td>{{ currency(entry.observed) }} · {{ entry.source }}</td>
+                      <td>R$ 0 inferido pelo Validador (chave ausente {{ entry.source === 'CSV' ? 'no Siconfi' : 'no CSV' }})</td>
+                      <td>{{ currency(entry.difference) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p>Total de avisos com zero inferido {{ inferred.length }}</p>
+            @if (inferred.length > pageSize) {
+              <nav class="pagination" [attr.aria-label]="'Paginação dos avisos com zero inferido para ' + referenceMonth(result)">
+                <button type="button" class="secondary" (click)="moveHypothesisPage(result.id, -1)" [disabled]="hypothesisPage === 1">Anterior</button>
+                <span aria-live="polite">Página {{ hypothesisPage }}</span>
+                <button type="button" class="secondary" (click)="moveHypothesisPage(result.id, 1)" [disabled]="first + pageSize >= inferred.length">Próxima</button>
+              </nav>
+            }
+          }
+        }
       </section>
     }
   } @else if (period() === '2026-13') {

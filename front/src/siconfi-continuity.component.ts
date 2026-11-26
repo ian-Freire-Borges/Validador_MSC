@@ -24,6 +24,7 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly needsAttention = computed(() => this.results().some(({ state }) =>
     state === 'Divergente' || state === 'Parcial' || state === 'Inconclusiva'));
   readonly pages = signal({ anterior: 1, posterior: 1 });
+  readonly hypothesisPages = signal({ anterior: 1, posterior: 1 });
 
   ngOnChanges(): void {
     this.reset();
@@ -34,6 +35,7 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
     this.stop();
     this.results.set([]);
     this.pages.set({ anterior: 1, posterior: 1 });
+    this.hypothesisPages.set({ anterior: 1, posterior: 1 });
     this.status.set('');
   }
 
@@ -70,6 +72,7 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
     const balances = this.balances();
     if (!balances) return;
     this.stop();
+    this.hypothesisPages.set({ anterior: 1, posterior: 1 });
     this.results.update(results => monthlyDirections.map(({ id, shift }) => {
       const existing = results.find(result => result.id === id);
       if (existing) return existing;
@@ -99,6 +102,10 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
 
   movePage(id: BalanceDirection, change: number): void {
     this.pages.update(pages => ({ ...pages, [id]: pages[id] + change }));
+  }
+
+  moveHypothesisPage(id: BalanceDirection, change: number): void {
+    this.hypothesisPages.update(pages => ({ ...pages, [id]: pages[id] + change }));
   }
 
   private stop(): void {

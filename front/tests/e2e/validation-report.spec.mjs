@@ -441,7 +441,7 @@ test('mantém divergências confiáveis em Avisos quando outro saldo tem NR inv�
   await expect(differences.filter({ hasText: validAccount })).toContainText('Diferença de R$ 2');
   await expect(differences.filter({ hasText: relatedAccount })).toContainText('Diferença de R$ 1');
   await expect(notices.getByText(accountWithInvalidNr, { exact: false })).toHaveCount(0);
-  await expect(notices.getByText('combinações sem par', { exact: false })).toHaveCount(0);
+  await expect(notices.getByText(/^\d+ combinações sem par · \d+ só no Siconfi e \d+ só no CSV\.$/)).toHaveCount(0);
 });
 
 test('informa que a comparação está indisponível quando o CSV bloqueia as duas direções', async ({ page, context, baseURL }) => {
@@ -476,3 +476,73 @@ for (const [period, type, referenceMonth] of [
     expect(calls).toHaveLength(0);
   });
 }
+
+test('mostra avisos com zero inferido automaticamente e preserva apenas a direção concluída ao cancelar', async ({ page, context, baseURL }) => {
+  const calls = [];
+  const releasePosterior = Promise.withResolvers();
+  await routeSiconfi(context, baseURL, async (route, filters) => {
+    const month = Number(filters.get('me_referencia'));
+    const accountClass = Number(filters.get('classe_conta'));
+    calls.push([month, accountClass]);
+    if (month === 11) await releasePosterior.promise;
+    if (accountClass !== 1) return fulfillSiconfi(route, baseURL, []);
+    const common = { cod_ibge: 2914604, exercicio: 2026, mes_referencia: month, classe_conta: 1,
+      tipo_matriz: 'MSCC', tipo_valor: filters.get('id_tv'), poder_orgao: powerCode, natureza_conta: 'D' };
+    return fulfillSiconfi(route, baseURL, [
+      { ...common, conta_contabil: debitAccount, valor: 100 },
+      { ...common, conta_contabil: creditAccount, valor: 2.5 },
+      ...Array.from({ length: 49 }, (_, index) => ({ ...common, conta_contabil: String(119900000 + index), valor: 1 })),
+    ]);
+  });
+  const localOnly = '111110602';
+  const rows = [row(debitAccount, '100', 'beginning_balance', 'D'), row(localOnly, '3', 'beginning_balance', 'D')];
+  await page.goto('/');
+  await selectFile(page, '2914604EX', '2026-10', rows, 'msc-sintetica.csv');
+  const validate = page.getByRole('button', { name: 'Validar', exact: true });
+  await validate.click();
+
+  const noticesTab = page.getByRole('tab', { name: 'Avisos' });
+  await noticesTab.click();
+  const notices = page.getByRole('tabpanel', { name: 'Avisos' });
+  const table = notices.getByRole('table', { name: 'Avisos com saldo zero inferido pelo Validador' });
+  const pagination = notices.getByRole('navigation', { name: 'Paginação dos avisos com zero inferido para setembro de 2026' });
+  try {
+    await expect(notices.getByRole('checkbox')).toHaveCount(0);
+    await expect(notices.getByText('51 combinações sem par · 50 só no Siconfi e 1 só no CSV.')).toBeVisible({ timeout: 20_000 });
+    const csv = table.getByRole('row', { name: new RegExp(localOnly) });
+    const api = table.getByRole('row', { name: new RegExp(creditAccount) });
+    await expect(csv.getByRole('cell')).toHaveText([localOnly + ' · PO ' + powerCode, 'R$ 3 · CSV', 'R$ 0 inferido pelo Validador (chave ausente no Siconfi)', 'R$ 3']);
+    await expect(api.getByRole('cell')).toHaveText([creditAccount + ' · PO ' + powerCode, 'R$ 2,5 · Siconfi', 'R$ 0 inferido pelo Validador (chave ausente no CSV)', 'R$ −2,5']);
+    await expect(notices.getByText('Inconclusiva', { exact: true })).toBeVisible();
+    await expect(notices.getByText('Divergência confirmada')).toHaveCount(0);
+    await pagination.getByRole('button', { name: 'Próxima' }).click();
+    await expect(pagination).toContainText('Página 2');
+
+    await expect.poll(() => calls.at(-1)).toEqual([11, 1]);
+    await notices.getByRole('button', { name: 'Cancelar comparação' }).click();
+    await expect(notices.getByRole('status')).toHaveText('Comparação cancelada.');
+    await expect(pagination).toContainText('Página 1');
+    await expect(table).toHaveCount(1);
+    await expect(csv).toBeVisible();
+    expect(calls).toHaveLength(9);
+  } finally {
+    releasePosterior.resolve();
+  }
+  await expect(notices.getByText('A consulta foi cancelada antes de concluir esta direção.')).toBeVisible();
+  await expect(table).toHaveCount(1);
+
+  await page.emulateMedia({ media: 'print' });
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+  await expect(table).toBeHidden();
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  await page.emulateMedia({ media: 'screen' });
+
+  await validate.click();
+  await noticesTab.click();
+  await expect(table).toHaveCount(0);
+
+  await selectFile(page, '2914604EX', '2026-12', rows, 'msc-substituta.csv');
+  await validate.click();
+  await noticesTab.click();
+  await expect(table).toHaveCount(0);
+});
