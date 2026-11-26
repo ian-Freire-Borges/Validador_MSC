@@ -1,8 +1,10 @@
 <a class="skip-link screen-only" href="#conteudo">Pular para o conteúdo</a>
-<header class="screen-only">
-  <div class="shell">
-    <h1>Validador MSC </h1>
-    <p>Pré-validação de arquivos do Executivo municipal.</p>
+<header class="brand-bar screen-only">
+  <div class="shell brand-content">
+    <svg class="brand-mark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+      <rect x="3" y="14" width="4" height="7" rx=".8"/><rect x="10" y="9" width="4" height="12" rx=".8"/><rect x="17" y="3" width="4" height="18" rx=".8"/>
+    </svg>
+    <h1>Validador MSC</h1>
   </div>
 </header>
 <main id="conteudo" tabindex="-1" class="shell">
@@ -30,15 +32,36 @@
       <div class="report-heading">
         <h2 id="resultado">Relatório de pré-validação</h2>
         <dl class="metadata report-context">
-          <div><dt>Competência</dt><dd>{{ formatCompetence(report.period) }}</dd></div>
+          <div>
+            <dt>
+              <svg class="report-meta-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="4" y="6" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v5M15 3v5"/>
+              </svg>
+              Competência
+            </dt>
+            <dd>{{ formatCompetence(report.period) }}</dd>
+          </div>
           @if (report.institution) {
             <div>
-              <dt>Instituição no CSV</dt>
+              <dt>
+                <svg class="report-meta-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="m3 9 9-5 9 5H3Zm2 11h14M7 10v8m5-8v8m5-8v8"/>
+                </svg>
+                Instituição no CSV
+              </dt>
               <dd><code>{{ report.institution }}</code>@if (report.institutionName) { · {{ report.institutionName }} }</dd>
             </div>
           }
           @if (report.institutionStatus === 'municipal') {
-            <div><dt>Perfil do arquivo</dt><dd>Executivo municipal</dd></div>
+            <div>
+              <dt>
+                <svg class="report-meta-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6m-6 4h6"/>
+                </svg>
+                Perfil do arquivo
+              </dt>
+              <dd>Executivo municipal</dd>
+            </div>
           }
         </dl>
       </div>
@@ -47,7 +70,13 @@
            (keydown)="navigateReportTabs($event, resultTab, noticesTab)">
         <button type="button" role="tab" id="resultado-aba" aria-controls="resultado-painel" #resultTab
                 [attr.aria-selected]="activeReportTab() === 'resultado'" [tabIndex]="activeReportTab() === 'resultado' ? 0 : -1"
-                (click)="activeReportTab.set('resultado')">Resultado</button>
+                [attr.aria-describedby]="errorCount() ? 'resultado-atencao' : null"
+                (click)="activeReportTab.set('resultado')">
+          Resultado
+          @if (errorCount()) {
+            <span class="report-tab-attention report-tab-error" aria-hidden="true">!</span>
+          }
+        </button>
         <button type="button" role="tab" id="avisos-aba" aria-controls="avisos-painel" #noticesTab
                 [attr.aria-selected]="activeReportTab() === 'avisos'" [tabIndex]="activeReportTab() === 'avisos' ? 0 : -1"
                 [attr.aria-describedby]="noticesNeedAttention() ? 'avisos-atencao' : null"
@@ -58,36 +87,44 @@
           }
         </button>
       </div>
+      @if (errorCount()) {
+        <span id="resultado-atencao" class="sr-only screen-only">Há erros na pré-validação.</span>
+      }
       @if (noticesNeedAttention()) {
         <span id="avisos-atencao" class="sr-only screen-only">Há avisos que merecem atenção.</span>
       }
       <div id="resultado-painel" role="tabpanel" aria-labelledby="resultado-aba" tabindex="0"
            [hidden]="activeReportTab() !== 'resultado' && !printing()">
-        <div class="report-outcome">
-          <p class="report-status"><strong>{{ reportStatus() }}</strong></p>
-          @if (errorCount()) {
-            <p>Corrija os erros listados abaixo antes de enviar a MSC ao Siconfi.</p>
+        <div class="report-outcome" [class.report-outcome-attention]="errorCount() || blockedReasons().length">
+          @if (errorCount() || blockedReasons().length) {
+            <span class="report-outcome-icon" aria-hidden="true">!</span>
           }
-          @if (blockedReasons().length) {
-            <p>Algumas verificações ficaram pendentes.</p>
-            <ul class="report-pending" aria-label="Motivos das verificações pendentes">
-              @for (reason of blockedReasons(); track reason) {
-                <li>{{ reason }}</li>
-              }
-            </ul>
-          }
+          <div>
+            <p class="report-status"><strong>{{ reportStatus() }}</strong></p>
+            @if (errorCount()) {
+              <p>Corrija os erros listados abaixo antes de enviar a MSC ao Siconfi.</p>
+            }
+            @if (blockedReasons().length) {
+              <p><strong>Algumas verificações ficaram pendentes.</strong></p>
+              <ul class="report-pending" aria-label="Motivos das verificações pendentes">
+                @for (reason of blockedReasons(); track reason) {
+                  <li>{{ reason }}</li>
+                }
+              </ul>
+            }
+          </div>
         </div>
         @if (errorCount()) {
           <section class="report-section" aria-labelledby="achados">
             <h3 id="achados">Erros de validação</h3>
             <ul class="error-legend" role="list" aria-label="Tipos de erro">
-              <li class="error-type error-type-structure">Estrutura</li>
-              <li class="error-type error-type-content">Conteúdo</li>
+              <li class="error-type error-type-structure">Estrutura <span>{{ structureCount() }}</span></li>
+              <li class="error-type error-type-content">Conteúdo <span>{{ contentCount() }}</span></li>
             </ul>
             @if (hasSourceOfFundsExportError()) {
               <p class="report-note">A Fonte de Recursos (FR) veio como <code>*ERRO*</code> no CSV. Esse campo precisa de um código de quatro dígitos. Confira o cadastro e o vínculo da fonte no sistema de origem, corrija o problema e exporte a MSC novamente.</p>
             }
-            <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de erros">
+            <div class="table-scroll report-findings" tabindex="0" role="region" aria-label="Tabela de erros">
               <table class="error-table">
                 <caption class="sr-only">Erros da pré-validação da MSC</caption>
                 <thead><tr><th scope="col">Tipo de erro</th><th scope="col">Mensagem</th></tr></thead>
