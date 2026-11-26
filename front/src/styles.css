@@ -135,11 +135,7 @@ tbody tr:nth-child(even) { background: #f6faf9; }
 .report-direction p { margin-block: .5rem; }
 .report-state { display: inline-block; padding-inline: .45rem; background: #edf3f7; border-radius: .25rem; }
 .report-advisories thead { background: #edf3f7; }
-.report-advisories :is(th, td):nth-child(n + 2) {
-  text-align: right;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
+.report-advisories td { vertical-align: top; }
 .report-inferred { color: #526779; }
 .error-legend { display: flex; flex-wrap: wrap; gap: .45rem; margin-block: .55rem .8rem; padding: 0; list-style: none; }
 .error-legend li { padding: .23rem .58rem; border-radius: 1rem; font-size: .85rem; }

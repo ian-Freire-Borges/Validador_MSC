@@ -260,13 +260,12 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   ]);
 
   const table = notices.getByRole('table', { name: 'Avisos da comparação entre competências' });
-  await expect(table.getByRole('columnheader')).toHaveText(['Conta / ICs', 'Saldo final (Siconfi)', 'Saldo inicial (MSC atual)']);
+  await expect(table.getByRole('columnheader')).toHaveText(['Tipo', 'Mensagem']);
   const divergence = table.getByRole('row', { name: new RegExp(debitAccount) });
-  await expect(divergence.getByRole('cell').first().locator('div')).toHaveText('PO ' + powerCode);
-  await expect(divergence.getByRole('cell').nth(1)).toHaveText('R$ 99,00 (D)');
-  await expect(divergence.getByRole('cell').nth(2)).toHaveText('R$ 100,00 (D)');
-  await expect(divergence.getByRole('cell').nth(1)).toHaveCSS('text-align', 'right');
-  await expect(divergence.locator('strong')).toHaveText(debitAccount);
+  await expect(divergence.getByRole('cell').first()).toHaveText('Aviso');
+  await expect(divergence.getByRole('cell').last()).toHaveText(
+    `Conta ${debitAccount} · PO ${powerCode}. O saldo inicial da MSC é R$ 100,00 (D) e difere do saldo final da competência anterior no Siconfi, de R$ 99,00 (D).`,
+  );
   await expect(notices.getByText('Referência setembro de 2026', { exact: false })).toBeVisible();
   await expect(notices.getByText('2 combinações sem par · 1 só no Siconfi e 1 só no CSV.')).toBeVisible();
   await expect(notices.getByText('Entre as combinações sem par, o saldo líquido é zero em 1 das que só constam no CSV e em 1 das que só constam no Siconfi.')).toBeVisible();
@@ -451,13 +450,15 @@ test('mantém divergências confiáveis em Avisos quando outro saldo tem NR inv�
   await expect(notices.getByText('Há combinações excluídas por dados inválidos no CSV.')).toBeVisible();
   const differences = notices.getByRole('table').locator('tbody').getByRole('row');
   await expect(differences).toHaveCount(2);
-  const validCells = differences.filter({ hasText: validAccount }).getByRole('cell');
-  const relatedCells = differences.filter({ hasText: relatedAccount }).getByRole('cell');
-  await expect(validCells.nth(1)).toHaveText('R$ 8,00 (D)');
-  await expect(validCells.nth(2)).toHaveText('R$ 10,00 (D)');
-  await expect(relatedCells.first().locator('div')).toHaveText('NR ' + nr + ' · PO ' + powerCode);
-  await expect(relatedCells.nth(1)).toHaveText('R$ 12,00 (D)');
-  await expect(relatedCells.nth(2)).toHaveText('R$ 13,00 (D)');
+  const validMessage = differences.filter({ hasText: validAccount }).getByRole('cell').last();
+  const relatedMessage = differences.filter({ hasText: relatedAccount }).getByRole('cell').last();
+  await expect(validMessage).toHaveText(
+    `Conta ${validAccount} · PO ${powerCode}. O saldo inicial da MSC é R$ 10,00 (D) e difere do saldo final da competência anterior no Siconfi, de R$ 8,00 (D).`,
+  );
+  await expect(relatedMessage.locator('strong')).toHaveText(`${relatedAccount} · NR ${nr} · PO ${powerCode}`);
+  await expect(relatedMessage).toHaveText(
+    `Conta ${relatedAccount} · NR ${nr} · PO ${powerCode}. O saldo inicial da MSC é R$ 13,00 (D) e difere do saldo final da competência anterior no Siconfi, de R$ 12,00 (D).`,
+  );
   await expect(notices.getByText(accountWithInvalidNr, { exact: false })).toHaveCount(0);
   await expect(notices.getByText(/^\d+ combinações sem par · \d+ só no Siconfi e \d+ só no CSV\.$/)).toHaveCount(0);
 });
@@ -492,7 +493,7 @@ for (const [period, message] of [
   });
 }
 
-test('mostra avisos com zero inferido, agrupa espelhos e reinicia a paginação ao revalidar', async ({ page, context, baseURL }) => {
+test('mostra cada aviso com zero inferido e reinicia a paginação ao revalidar', async ({ page, context, baseURL }) => {
   const calls = [];
   const localOnly = '111110602';
   const pairedAccount = '111110603';
@@ -532,28 +533,29 @@ test('mostra avisos com zero inferido, agrupa espelhos e reinicia a paginação 
   const pagination = notices.getByRole('navigation', { name: 'Paginação da comparação com a competência setembro de 2026' });
   await expect(notices.getByRole('checkbox')).toHaveCount(0);
   await expect(notices.getByText('60 combinações sem par · 55 só no Siconfi e 5 só no CSV.')).toBeVisible({ timeout: 20_000 });
-  await expect(notices.getByText('Total de avisos com zero inferido 60 · Exibidos em 59 linhas')).toBeVisible();
+  await expect(notices.getByText('Total de avisos com zero inferido 60', { exact: true })).toBeVisible();
   const csv = table.getByRole('row', { name: new RegExp(localOnly) });
   const api = table.getByRole('row', { name: new RegExp(creditAccount) });
-  await expect(csv.getByRole('cell').nth(1)).toHaveText('R$ 0,00 inferido');
-  await expect(csv.getByRole('cell').nth(2)).toHaveText('R$ 3,00 (D)');
-  await expect(api.getByRole('cell').nth(1)).toHaveText('R$ 2,50 (D)');
-  await expect(api.getByRole('cell').nth(2)).toHaveText('R$ 0,00 inferido');
+  await expect(csv.getByRole('cell').last()).toContainText('saldo inicial da MSC é R$ 3,00 (D) e difere do saldo final da competência anterior no Siconfi, de R$ 0,00 inferido');
+  await expect(api.getByRole('cell').last()).toContainText('saldo inicial da MSC é R$ 0,00 inferido e difere do saldo final da competência anterior no Siconfi, de R$ 2,50 (D)');
   const paired = table.getByRole('row').filter({ hasText: pairedAccount });
-  await expect(paired).toHaveCount(1);
-  await expect(paired.getByRole('cell').first().locator('div')).toHaveText('FR 1500 · PO ' + powerCode);
-  await expect(paired.getByRole('cell').nth(1)).toHaveText('R$ 0,00 inferido');
-  await expect(paired.getByRole('cell').nth(2)).toHaveText('R$ 4,00 (C)');
+  await expect(paired).toHaveCount(2);
+  const localPair = paired.filter({ hasText: 'FR 1500' });
+  const officialPair = paired.filter({ hasNotText: 'FR 1500' });
+  await expect(localPair.locator('strong')).toHaveText(`${pairedAccount} · FR 1500 · PO ${powerCode}`);
+  await expect(localPair).toContainText('saldo inicial da MSC é R$ 4,00 (C)');
+  await expect(officialPair.locator('strong')).toHaveText(`${pairedAccount} · PO ${powerCode}`);
+  await expect(officialPair).toContainText('saldo final da competência anterior no Siconfi, de R$ 4,00 (C)');
   await expect(table.getByRole('row').filter({ hasText: ambiguousAccount })).toHaveCount(3);
   await expect(table.getByRole('row').filter({ hasText: oppositeSigns })).toHaveCount(2);
   await expect(table.getByRole('row').filter({ hasText: twoDifferentDimensions })).toHaveCount(2);
   await expect(notices.getByText('Inconclusiva', { exact: true })).toBeVisible();
   await expect(notices.getByText('Total de avisos de divergência 1', { exact: true })).toBeVisible();
   await expect(table.locator('tbody').getByRole('row')).toHaveCount(50);
-  await expect(table.locator('tbody').getByRole('row').first().locator('strong')).toHaveText(debitAccount);
+  await expect(table.locator('tbody').getByRole('row').first().locator('strong')).toHaveText(`${debitAccount} · PO ${powerCode}`);
   await pagination.getByRole('button', { name: 'Próxima' }).click();
   await expect(pagination).toContainText('Página 2 de 2');
-  await expect(table.locator('tbody').getByRole('row')).toHaveCount(10);
+  await expect(table.locator('tbody').getByRole('row')).toHaveCount(11);
   expect(calls).toEqual(Array.from({ length: 8 }, (_, index) => [9, index + 1]));
 
   await page.emulateMedia({ media: 'print' });

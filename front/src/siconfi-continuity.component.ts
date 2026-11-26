@@ -4,7 +4,7 @@ import type { MonthlyBalances } from './monthly-balances.ts';
 import { historyService } from './siconfi-history.ts';
 import { compareMonthlyBalances } from './siconfi-monthly-balances.ts';
 import type { PreviousBalanceResult } from './siconfi-monthly-balances.ts';
-import { advisoryBalance, formatCompetence, groupInferredDifferences } from './report-presentation.ts';
+import { advisoryBalance, formatCompetence } from './report-presentation.ts';
 
 @Component({
   selector: 'msc-siconfi-continuity',
@@ -19,10 +19,9 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly busy = signal(false);
   readonly status = signal('');
   readonly result = signal<PreviousBalanceResult | null>(null);
-  readonly inferredRows = computed(() => groupInferredDifferences(this.result()?.inferredDifferences ?? []));
   readonly rows = computed(() => [
     ...(this.result()?.differences ?? []),
-    ...this.inferredRows().map(({ entry }) => ({
+    ...(this.result()?.inferredDifferences ?? []).map(entry => ({
       key: entry.key,
       official: entry.source === 'Siconfi' ? entry.observed : null,
       local: entry.source === 'CSV' ? entry.observed : null,
@@ -35,10 +34,7 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly page = signal(1);
   readonly visible = computed(() => {
     const first = (this.page() - 1) * this.pageSize;
-    return this.rows().slice(first, first + this.pageSize).map(({ key, local, official }) => {
-      const [account, ...dimensions] = key.split(' · ');
-      return { key, account, dimensions, local, official };
-    });
+    return this.rows().slice(first, first + this.pageSize);
   });
   readonly pageCount = computed(() => Math.ceil(this.rows().length / this.pageSize));
 

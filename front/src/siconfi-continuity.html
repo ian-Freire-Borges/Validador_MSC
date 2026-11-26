@@ -29,32 +29,26 @@
               <caption class="sr-only">Avisos da comparação entre competências</caption>
               <thead>
                 <tr>
-                  <th scope="col">Conta / ICs</th>
-                  <th scope="col">Saldo final (Siconfi)</th>
-                  <th scope="col">Saldo inicial (MSC atual)</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col">Mensagem</th>
                 </tr>
               </thead>
               <tbody>
                 @for (row of visible(); track row.key) {
                   <tr>
+                    <td><span class="error-type error-type-content">Aviso</span></td>
                     <td>
-                      <strong>{{ row.account }}</strong>
-                      @if (row.dimensions.length) {
-                        <div>{{ row.dimensions.join(' · ') }}</div>
-                      }
-                    </td>
-                    <td>
-                      @if (row.official === null) {
-                        R$ 0,00 <small class="report-inferred">inferido</small>
-                      } @else {
-                        {{ advisoryBalance(row.official) }}
-                      }
-                    </td>
-                    <td>
+                      Conta <strong>{{ row.key }}</strong>. O saldo inicial da MSC é
                       @if (row.local === null) {
                         R$ 0,00 <small class="report-inferred">inferido</small>
                       } @else {
                         {{ advisoryBalance(row.local) }}
+                      }
+                      e difere do saldo final da competência anterior no Siconfi, de
+                      @if (row.official === null) {
+                        R$ 0,00 <small class="report-inferred">inferido</small>.
+                      } @else {
+                        {{ advisoryBalance(row.official) }}.
                       }
                     </td>
                   </tr>
@@ -66,9 +60,7 @@
             <p>Total de avisos de divergência {{ result.differences.length }}</p>
           }
           @if (result.inferredDifferences?.length) {
-            <p>Total de avisos com zero inferido {{ result.inferredDifferences.length }}
-              @if (inferredRows().length !== result.inferredDifferences.length) { · Exibidos em {{ inferredRows().length }} linhas }
-            </p>
+            <p>Total de avisos com zero inferido {{ result.inferredDifferences.length }}</p>
           }
           @if (pageCount() > 1) {
             <nav class="pagination" [attr.aria-label]="'Paginação da comparação com a competência ' + referenceMonth(result)">

@@ -1,6 +1,4 @@
-import { widths } from './catalog.ts';
 import type { BalanceGroup } from './balances.ts';
-import type { InferredDifference } from './siconfi-monthly-balances.ts';
 import type { RuleId } from './validation.ts';
 
 const monthFormatter = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -58,55 +56,4 @@ export function advisoryBalance(value: string): string {
 export function validationLabel(errorCount: number, incomplete: boolean): string {
   if (errorCount > 0) return 'Erros na pré-validação';
   return incomplete ? 'Pré-validação incompleta' : 'Sem erros nas verificações executadas';
-}
-const icTypes = Object.keys(widths);
-type GroupedInferredRow = { entry: InferredDifference; paired?: {
-  account: string; csvPairs: string; officialPairs: string; changedType: string; official: InferredDifference;
-} };
-
-export function groupInferredDifferences(entries: InferredDifference[]): GroupedInferredRow[] {
-  const buckets = new Map<string, Partial<Record<InferredDifference['source'], InferredDifference | null>>>();
-  function signatures(entry: InferredDifference): string[] {
-    const [account, ...pairs] = entry.key.split(' · ');
-    return icTypes.map(type => [account, entry.observed, type, ...pairs.filter(pair => !pair.startsWith(type + ' '))].join('|'));
-  }
-  for (const entry of entries) {
-    for (const key of signatures(entry)) {
-      let bucket = buckets.get(key);
-      if (!bucket) {
-        bucket = {};
-        buckets.set(key, bucket);
-      }
-      bucket[entry.source] = bucket[entry.source] === undefined ? entry : null;
-    }
-  }
-
-  const matches = new Map<InferredDifference, InferredDifference>();
-  for (const entry of entries) {
-    const otherSource = entry.source === 'CSV' ? 'Siconfi' : 'CSV';
-    let match: InferredDifference | undefined;
-    for (const key of signatures(entry)) {
-      const other = buckets.get(key)?.[otherSource];
-      if (other === null || (other && other.key !== entry.key && match && match !== other)) {
-        match = undefined;
-        break;
-      }
-      if (other && other.key !== entry.key) match = other;
-    }
-    if (match) matches.set(entry, match);
-  }
-
-  const rows: GroupedInferredRow[] = [];
-  for (const entry of entries) {
-    const other = matches.get(entry);
-    if (!other || matches.get(other) !== entry) {
-      rows.push({ entry });
-    } else if (entry.source === 'CSV') {
-      const [account, ...csv] = entry.key.split(' · ');
-      const [, ...official] = other.key.split(' · ');
-      const changedType = (csv.find(pair => !official.includes(pair)) ?? official.find(pair => !csv.includes(pair)))!.split(' ')[0];
-      rows.push({ entry, paired: { account, csvPairs: csv.join(' · '), officialPairs: official.join(' · '), changedType, official: other } });
-    }
-  }
-  return rows;
 }

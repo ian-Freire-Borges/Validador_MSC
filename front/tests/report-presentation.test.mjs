@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { advisoryBalance, currency, findingTitle, formatCompetence, groupInferredDifferences, validationLabel } from '../src/report-presentation.ts';
+import { advisoryBalance, currency, findingTitle, formatCompetence, validationLabel } from '../src/report-presentation.ts';
 import { validationRules } from '../src/validation.ts';
 
 test('formata a competência local sem inferir períodos fora do leiaute', () => {
@@ -37,16 +37,4 @@ test('distingue erros, verificações bloqueadas e resultado sem falhas', () => 
   assert.equal(validationLabel(2, false), 'Erros na pré-validação');
   assert.equal(validationLabel(0, true), 'Pré-validação incompleta');
   assert.equal(validationLabel(0, false), 'Sem erros nas verificações executadas');
-});
-
-test('exibe 18 avisos espelhados de nove contas em nove linhas, sem alterar os avisos de origem', () => {
-  const entries = Array.from({ length: 9 }, (_, index) => String(211110101 + index)).flatMap(account => [
-    { key: account + ' · FP 1 · FR 1500 · PO 10131', source: 'CSV', observed: '−1.01', difference: '−1.01' },
-    { key: account + ' · FP 1 · PO 10131', source: 'Siconfi', observed: '−1.01', difference: '1.01' },
-  ]);
-  const rows = groupInferredDifferences(entries);
-  assert.equal(entries.length, 18);
-  assert.equal(rows.length, 9);
-  assert.ok(rows.every(row => row.paired?.changedType === 'FR'));
-  assert.deepEqual(rows.map(row => row.paired.account), entries.filter(entry => entry.source === 'CSV').map(entry => entry.key.slice(0, 9)));
 });
