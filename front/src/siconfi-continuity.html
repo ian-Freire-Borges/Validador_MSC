@@ -69,7 +69,7 @@
             </nav>
           }
         }
-        @if (result.inferredDifferences; as inferred) {
+        @if (inferredRows().get(result.id); as inferred) {
           @if (inferred.length) {
             @let hypothesisPage = hypothesisPages()[result.id];
             @let first = (hypothesisPage - 1) * pageSize;
@@ -78,18 +78,40 @@
                 <caption>Avisos com saldo zero inferido pelo Validador</caption>
                 <thead><tr><th scope="col">Combinação</th><th scope="col">Saldo encontrado</th><th scope="col">Saldo inferido</th><th scope="col">Diferença hipotética (CSV menos Siconfi)</th></tr></thead>
                 <tbody>
-                  @for (entry of inferred.slice(first, first + pageSize); track entry.key) {
+                  @for (row of inferred.slice(first, first + pageSize); track row.entry.key) {
                     <tr>
-                      <td>{{ entry.key }}</td>
-                      <td>{{ currency(entry.observed) }} · {{ entry.source }}</td>
-                      <td>R$ 0 inferido pelo Validador (chave ausente {{ entry.source === 'CSV' ? 'no Siconfi' : 'no CSV' }})</td>
-                      <td>{{ currency(entry.difference) }}</td>
+                      @if (row.paired; as pair) {
+                        <td>
+                          <strong>Conta {{ pair.account }}</strong>
+                          <div>CSV: {{ pair.csvPairs }} @if (!pair.csvPairs.includes(pair.changedType + ' ')) { · {{ pair.changedType }} ausente }</div>
+                          <div>Siconfi: {{ pair.officialPairs }} @if (!pair.officialPairs.includes(pair.changedType + ' ')) { · {{ pair.changedType }} ausente }</div>
+                        </td>
+                        <td>
+                          <div>{{ previous ? 'Inicial' : 'Final' }} no CSV de {{ formatCompetence(period()) }}: {{ currency(row.entry.observed) }} ({{ row.entry.observed.startsWith('−') ? 'C' : 'D' }})</div>
+                          <div>{{ previous ? 'Final' : 'Inicial' }} no Siconfi de {{ referenceMonth(result) }}: {{ currency(pair.official.observed) }} ({{ pair.official.observed.startsWith('−') ? 'C' : 'D' }})</div>
+                        </td>
+                        <td>
+                          <div>Chave do CSV: R$ 0 inferido pelo Validador no Siconfi</div>
+                          <div>Chave do Siconfi: R$ 0 inferido pelo Validador no CSV</div>
+                        </td>
+                        <td>
+                          <div>Chave do CSV: {{ currency(row.entry.difference) }}</div>
+                          <div>Chave do Siconfi: {{ currency(pair.official.difference) }}</div>
+                        </td>
+                      } @else {
+                        <td>{{ row.entry.key }}</td>
+                        <td>{{ currency(row.entry.observed) }} · {{ row.entry.source }}</td>
+                        <td>R$ 0 inferido pelo Validador (chave ausente {{ row.entry.source === 'CSV' ? 'no Siconfi' : 'no CSV' }})</td>
+                        <td>{{ currency(row.entry.difference) }}</td>
+                      }
                     </tr>
                   }
                 </tbody>
               </table>
             </div>
-            <p>Total de avisos com zero inferido {{ inferred.length }}</p>
+            <p>Total de avisos com zero inferido {{ result.inferredDifferences?.length }}
+              @if (inferred.length !== result.inferredDifferences?.length) { · Exibidos em {{ inferred.length }} linhas }
+            </p>
             @if (inferred.length > pageSize) {
               <nav class="pagination" [attr.aria-label]="'Paginação dos avisos com zero inferido para ' + referenceMonth(result)">
                 <button type="button" class="secondary" (click)="moveHypothesisPage(result.id, -1)" [disabled]="hypothesisPage === 1">Anterior</button>

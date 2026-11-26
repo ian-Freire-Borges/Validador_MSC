@@ -4,7 +4,7 @@ import type { BalanceDirection, MonthlyBalances } from './monthly-balances.ts';
 import { historyService } from './siconfi-history.ts';
 import { compareMonthlyBalances, monthlyDirections } from './siconfi-monthly-balances.ts';
 import type { DirectionResult } from './siconfi-monthly-balances.ts';
-import { currency, formatCompetence } from './report-presentation.ts';
+import { currency, formatCompetence, groupInferredDifferences } from './report-presentation.ts';
 
 @Component({
   selector: 'msc-siconfi-continuity',
@@ -22,6 +22,8 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly status = signal('');
   readonly consultedPages = signal(0);
   readonly results = signal<DirectionResult[]>([]);
+  readonly inferredRows = computed(() => new Map(this.results().map(result =>
+    [result.id, groupInferredDifferences(result.inferredDifferences ?? [])])));
   readonly needsAttention = computed(() => this.results().some(({ state }) =>
     state === 'Divergente' || state === 'Parcial' || state === 'Inconclusiva'));
   readonly pages = signal({ anterior: 1, posterior: 1 });

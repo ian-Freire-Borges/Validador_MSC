@@ -497,6 +497,11 @@ for (const [period, type, referenceMonth] of [
 
 test('mostra avisos com zero inferido automaticamente e preserva apenas a direção concluída ao cancelar', async ({ page, context, baseURL }) => {
   const calls = [];
+  const localOnly = '111110602';
+  const pairedAccount = '111110603';
+  const ambiguousAccount = '111110604';
+  const oppositeSigns = '111110701';
+  const twoDifferentDimensions = '111111900';
   const releasePosterior = Promise.withResolvers();
   await routeSiconfi(context, baseURL, async (route, filters) => {
     const month = Number(filters.get('me_referencia'));
@@ -509,11 +514,17 @@ test('mostra avisos com zero inferido automaticamente e preserva apenas a direç
     return fulfillSiconfi(route, baseURL, [
       { ...common, conta_contabil: debitAccount, valor: 100 },
       { ...common, conta_contabil: creditAccount, valor: 2.5 },
+      { ...common, conta_contabil: pairedAccount, valor: 4, natureza_conta: 'C' },
+      { ...common, conta_contabil: ambiguousAccount, valor: 6, fonte_recursos: '1501' },
+      { ...common, conta_contabil: ambiguousAccount, valor: 6, fonte_recursos: '1502' },
+      { ...common, conta_contabil: oppositeSigns, valor: 8, natureza_conta: 'C' },
+      { ...common, conta_contabil: twoDifferentDimensions, valor: 9, fonte_recursos: '1501', poder_orgao: '10132' },
       ...Array.from({ length: 49 }, (_, index) => ({ ...common, conta_contabil: String(119900000 + index), valor: 1 })),
     ]);
   });
-  const localOnly = '111110602';
-  const rows = [row(debitAccount, '100', 'beginning_balance', 'D'), row(localOnly, '3', 'beginning_balance', 'D')];
+  const rows = [row(debitAccount, '100', 'beginning_balance', 'D'), row(localOnly, '3', 'beginning_balance', 'D'),
+    row(pairedAccount, '4', 'beginning_balance', 'C', '1500'), row(ambiguousAccount, '6', 'beginning_balance', 'D', '1500'),
+    row(oppositeSigns, '8', 'beginning_balance', 'D', '1500'), row(twoDifferentDimensions, '9', 'beginning_balance', 'D', '1500')];
   await page.goto('/');
   await selectFile(page, '2914604EX', '2026-10', rows, 'msc-sintetica.csv');
   const validate = page.getByRole('button', { name: 'Validar', exact: true });
@@ -526,11 +537,24 @@ test('mostra avisos com zero inferido automaticamente e preserva apenas a direç
   const pagination = notices.getByRole('navigation', { name: 'Paginação dos avisos com zero inferido para setembro de 2026' });
   try {
     await expect(notices.getByRole('checkbox')).toHaveCount(0);
-    await expect(notices.getByText('51 combinações sem par · 50 só no Siconfi e 1 só no CSV.')).toBeVisible({ timeout: 20_000 });
+    await expect(notices.getByText('60 combinações sem par · 55 só no Siconfi e 5 só no CSV.')).toBeVisible({ timeout: 20_000 });
+    await expect(notices.getByText('Total de avisos com zero inferido 60 · Exibidos em 59 linhas')).toBeVisible();
     const csv = table.getByRole('row', { name: new RegExp(localOnly) });
     const api = table.getByRole('row', { name: new RegExp(creditAccount) });
     await expect(csv.getByRole('cell')).toHaveText([localOnly + ' · PO ' + powerCode, 'R$ 3 · CSV', 'R$ 0 inferido pelo Validador (chave ausente no Siconfi)', 'R$ 3']);
     await expect(api.getByRole('cell')).toHaveText([creditAccount + ' · PO ' + powerCode, 'R$ 2,5 · Siconfi', 'R$ 0 inferido pelo Validador (chave ausente no CSV)', 'R$ −2,5']);
+    const paired = table.getByRole('row').filter({ hasText: pairedAccount });
+    await expect(paired).toHaveCount(1);
+    await expect(paired).toContainText('Conta ' + pairedAccount);
+    await expect(paired).toContainText('CSV: FR 1500 · PO 10131');
+    await expect(paired).toContainText('Siconfi: PO 10131 · FR ausente');
+    await expect(paired).toContainText('Inicial no CSV de outubro de 2026: R$ −4 (C)');
+    await expect(paired).toContainText('Final no Siconfi de setembro de 2026: R$ −4 (C)');
+    await expect(paired).toContainText('Chave do CSV: R$ 0 inferido pelo Validador no Siconfi');
+    await expect(paired).toContainText('Chave do Siconfi: R$ 0 inferido pelo Validador no CSV');
+    await expect(table.getByRole('row').filter({ hasText: ambiguousAccount })).toHaveCount(3);
+    await expect(table.getByRole('row').filter({ hasText: oppositeSigns })).toHaveCount(2);
+    await expect(table.getByRole('row').filter({ hasText: twoDifferentDimensions })).toHaveCount(2);
     await expect(notices.getByText('Inconclusiva', { exact: true })).toBeVisible();
     await expect(notices.getByText('Divergência confirmada')).toHaveCount(0);
     await pagination.getByRole('button', { name: 'Próxima' }).click();
