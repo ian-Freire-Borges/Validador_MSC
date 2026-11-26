@@ -134,38 +134,53 @@
                 <thead><tr><th scope="col">Tipo de erro</th><th scope="col">Mensagem</th></tr></thead>
                 <tbody>
                   @for (finding of visible(); track $index) {
+                    @let invalidRevenue = finding.id === 'C03' && finding.expected === '8 dígitos ASCII para NR';
+                    @let invalidFunding = isSourceOfFundsExportError(finding);
                     <tr>
                       <td>
                         <span class="error-type" [class.error-type-structure]="category(finding) === 'Estrutura'"
                               [class.error-type-content]="category(finding) === 'Conteúdo'">{{ category(finding) }}</span>
                       </td>
-                      <td>
-                        @if (isSourceOfFundsExportError(finding)) {
-                          <strong>Linha {{ finding.line }} — Fonte de Recursos (FR) inválida.</strong>
-                          <div>O arquivo trouxe <code>{{ finding.observed }}</code>, e o campo exige quatro dígitos.</div>
-                          <small class="report-reference">{{ finding.id }} · Campo {{ finding.fieldName }}</small>
-                        } @else {
-                          <strong>{{ describeLocation(finding) }} — {{ findingTitle(finding.id) }}</strong>
-                          <div class="observed">O arquivo trouxe <code>{{ describeObserved(finding.observed) }}</code>. Esperado <code>{{ finding.expected }}</code>.</div>
-                          <small class="report-reference">{{ finding.id }}</small>
-                        }
-                        @if (finding.accountCode) {
-                          <div class="observed">Conta informada <code>{{ finding.accountCode }}</code></div>
-                        }
+                      <td class="finding-message">
+                        <strong class="finding-title">{{ invalidRevenue ? 'Natureza da Receita (NR) inválida' : invalidFunding ? 'Fonte de Recursos (FR) inválida' : findingTitle(finding.id) }}</strong>
+                        <div class="finding-context">
+                          @if (finding.accountCode) { Conta: {{ finding.accountCode }} · }
+                          @if (finding.line !== undefined) {
+                            Linha: {{ finding.line }}@if (finding.byteOffset !== undefined) { · Byte: {{ finding.byteOffset }} }
+                          } @else { Arquivo }
+                        </div>
+                        <div class="observed">Valor informado: <strong class="finding-value">{{ describeObserved(finding.observed) }}</strong></div>
+                        <div>Correção:
+                          @if (invalidRevenue) {
+                            informe um código de Natureza da Receita válido, composto por 8 dígitos numéricos.
+                          } @else if (invalidFunding) {
+                            informe um código de Fonte de Recursos com quatro dígitos.
+                          } @else if (finding.id === 'L01') {
+                            {{ finding.expected }}
+                          } @else {
+                            confira se o arquivo atende ao requisito: {{ finding.expected }}
+                          }
+                        </div>
+                        <small class="report-reference">Regra {{ finding.id }}@if (finding.fieldIndex !== undefined) { · Campo {{ finding.fieldIndex }} }@if (finding.fieldName) { · {{ finding.fieldName }} }@if (finding.pair !== undefined) { · Par {{ finding.pair }} }</small>
                       </td>
                     </tr>
                   }
                   @for (group of visibleBalances(); track $index) {
                     <tr>
                       <td><span class="error-type error-type-content">Conteúdo</span></td>
-                      <td>
-                        <strong>{{ group.id === 'SAL-CONS-01' ? 'Conta ' : '' }}{{ group.group }} — {{ findingTitle(group.id) }}</strong>
+                      <td class="finding-message">
+                        <strong class="finding-title">{{ findingTitle(group.id) }}</strong>
+                        <div class="finding-context">{{ group.id === 'SAL-CONS-01' ? 'Conta: ' : '' }}{{ group.group }}@if (group.lines.count) { · Linhas do grupo {{ lineText(group.lines) }} }</div>
                         @if (group.id === 'SAL-CONS-01') {
-                          <div>O arquivo trouxe saldo final de {{ currency(group.totals[2].value) }}. O saldo inicial de {{ currency(group.totals[0].value) }} somado à movimentação líquida de {{ currency(group.totals[1].value) }} resulta em {{ currency(group.totals[3].value) }}. Diferença de {{ currency(group.totals[4].value) }}.</div>
+                          <div>Saldo final informado: <strong class="finding-value">{{ currency(group.totals[2].value) }}</strong>.</div>
+                          <div>O saldo inicial de {{ currency(group.totals[0].value) }} somado à movimentação líquida de {{ currency(group.totals[1].value) }} resulta em {{ currency(group.totals[3].value) }}. Diferença de {{ currency(group.totals[4].value) }}.</div>
+                          <div>Correção: confira os valores e a natureza de débito ou crédito dos registros dessa combinação antes de reexportar a MSC.</div>
                         } @else {
-                          <div>O arquivo trouxe {{ currency(group.totals[0].value) }} em débitos e {{ currency(group.totals[1].value) }} em créditos. Os totais deveriam coincidir. Diferença de {{ currency(group.totals[2].value) }} (débitos menos créditos).</div>
+                          <div>Totais informados: <strong class="finding-value">{{ currency(group.totals[0].value) }}</strong> em débitos e <strong class="finding-value">{{ currency(group.totals[1].value) }}</strong> em créditos.</div>
+                          <div>Os totais deveriam coincidir. Diferença de {{ currency(group.totals[2].value) }} (débitos menos créditos).</div>
+                          <div>Correção: confira os totais de débito e crédito do grupo antes de reexportar a MSC.</div>
                         }
-                        <small class="report-reference">{{ group.id }} @if (group.lines.count) { · Linhas do grupo {{ lineText(group.lines) }} }</small>
+                        <small class="report-reference">Regra {{ group.id }}</small>
                       </td>
                     </tr>
                   }

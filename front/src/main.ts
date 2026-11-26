@@ -180,17 +180,6 @@ class App implements OnDestroy {
     this.printing.set(false);
   }
 
-  describeLocation(finding: Finding): string {
-    if (finding.byteOffset !== undefined) return 'Linha ' + finding.line + ', byte ' + finding.byteOffset;
-    if (finding.line === undefined) return 'Arquivo';
-    return [
-      'Linha ' + finding.line,
-      finding.fieldIndex === undefined ? '' : 'campo ' + finding.fieldIndex,
-      finding.fieldName ?? '',
-      finding.pair === undefined ? '' : 'par ' + finding.pair,
-    ].filter(Boolean).join(', ');
-  }
-
   describeObserved(value: string): string {
     if (value === '') return '(vazio)';
     if (value.trim() === '') return '(somente espaços em branco)';

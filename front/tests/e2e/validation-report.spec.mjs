@@ -85,7 +85,8 @@ test('exige CSV em UTF-8, orienta a reexportação e omite o histórico manual',
   });
   await page.getByRole('button', { name: 'Validar', exact: true }).click();
   const result = page.getByRole('tabpanel', { name: 'Resultado' });
-  const finding = result.getByRole('row', { name: /Linha 1, byte 0.*leitura em UTF-8/ });
+  const finding = result.getByRole('row', { name: /leitura em UTF-8/ });
+  await expect(finding).toContainText('Linha: 1 · Byte: 0');
   await expect(finding).toContainText('0xE9');
   await expect(finding).toContainText('Reexporte o CSV em UTF-8 e valide novamente.');
   await expect(finding).toContainText('L01');
@@ -100,10 +101,9 @@ test('mostra a falha de FR e a conta da própria linha na aba Resultado', async 
   const result = page.getByRole('tabpanel', { name: 'Resultado' });
   await expect(result.getByText('Erros na pré-validação', { exact: true })).toBeVisible();
   const finding = result.getByRole('row', { name: /Fonte de Recursos \(FR\) inválida/ });
-  await expect(finding).toContainText('Linha 3');
+  await expect(finding).toContainText('Conta: ' + debitAccount + ' · Linha: 3');
   await expect(finding).toContainText('*ERRO*');
-  await expect(finding).toContainText('C03 · Campo IC3');
-  await expect(finding).toContainText('Conta informada ' + debitAccount);
+  await expect(finding).toContainText('Regra C03 · Campo 6 · IC3 · Par 3');
   await expect(result.getByText(/Confira o cadastro e o vínculo da fonte/)).toBeVisible();
   await expect(result.getByText('Corrija os erros listados abaixo antes de enviar a MSC ao Siconfi.')).toBeVisible();
   await expect(result.getByRole('list', { name: 'Motivos das verificações pendentes' }).getByRole('listitem')).toHaveText(
@@ -131,14 +131,16 @@ test('mostra consistência e equilíbrio patrimonial na aba Resultado', async ({
   await expect(table.getByRole('cell', { name: 'Estrutura', exact: true })).toHaveCount(0);
 
   const consistency = errors.filter({ hasText: 'SAL-CONS-01' });
-  await expect(consistency).toContainText('Conta 111110100 · PO 10131');
-  await expect(consistency).toContainText('O arquivo trouxe saldo final de R$ 6. O saldo inicial de R$ 10 somado à movimentação líquida de R$ −15 resulta em R$ −5. Diferença de R$ 11.');
-  await expect(consistency).toContainText('SAL-CONS-01 · Linhas do grupo 3, 4, 5');
+  await expect(consistency).toContainText('Conta: 111110100 · PO 10131 · Linhas do grupo 3, 4, 5');
+  await expect(consistency).toContainText('Saldo final informado: R$ 6.');
+  await expect(consistency).toContainText('O saldo inicial de R$ 10 somado à movimentação líquida de R$ −15 resulta em R$ −5. Diferença de R$ 11.');
+  await expect(consistency).toContainText('Regra SAL-CONS-01');
 
   const equilibrium = errors.filter({ hasText: 'SAL-EQU-01' });
-  await expect(equilibrium).toContainText('Patrimonial (classes 1–4)');
-  await expect(equilibrium).toContainText('O arquivo trouxe R$ 16 em débitos e R$ 15 em créditos. Os totais deveriam coincidir. Diferença de R$ 1 (débitos menos créditos).');
-  await expect(equilibrium).toContainText('SAL-EQU-01 · Linhas do grupo 3, 4, 5');
+  await expect(equilibrium).toContainText('Patrimonial (classes 1–4) · Linhas do grupo 3, 4, 5');
+  await expect(equilibrium).toContainText('Totais informados: R$ 16 em débitos e R$ 15 em créditos.');
+  await expect(equilibrium).toContainText('Os totais deveriam coincidir. Diferença de R$ 1 (débitos menos créditos).');
+  await expect(equilibrium).toContainText('Regra SAL-EQU-01');
   expect(calls).toHaveLength(0);
 });
 
@@ -378,7 +380,7 @@ test('cancela a consulta Siconfi do CSV substituído e descarta a resposta tardi
 test('prepara todos os erros para impressão, exclui Avisos e restaura aba e página', async ({ page, context, baseURL }) => {
   await mockSiconfi(context, baseURL, previousReference);
   const invalidRows = Array.from({ length: 53 }, () => row(debitAccount, '0.00', 'period_change', 'D', '*ERRO*'));
-  const expectedErrors = invalidRows.map((_, index) => `Linha ${3 + balances.length + index} — Fonte de Recursos (FR) inválida.`);
+  const expectedErrors = invalidRows.map((_, index) => `Conta: ${debitAccount} · Linha: ${3 + balances.length + index}`);
   await validateFile(page, '2914604EX', [...balances, ...invalidRows]);
 
   const resultTab = page.getByRole('tab', { name: 'Resultado' });
@@ -387,7 +389,7 @@ test('prepara todos os erros para impressão, exclui Avisos e restaura aba e pá
   const notices = page.getByRole('tabpanel', { name: 'Avisos', includeHidden: true });
   const errorTable = result.getByRole('table', { name: 'Erros da pré-validação da MSC' });
   const errorRows = errorTable.getByRole('row').filter({ hasNot: page.getByRole('columnheader') });
-  const errorLabels = errorRows.getByText(/^Linha \d+ — Fonte de Recursos/);
+  const errorLabels = errorRows.filter({ hasText: 'Fonte de Recursos (FR) inválida' }).locator('.finding-context');
   const pagination = result.getByRole('navigation', { name: 'Paginação da lista de erros' });
   await expect(errorLabels).toHaveText(expectedErrors.slice(0, 50));
   await pagination.getByRole('button', { name: 'Próxima' }).click();
@@ -424,7 +426,7 @@ test('mantém divergências confiáveis em Avisos quando outro saldo tem NR inv�
   const validAccount = '211110101';
   const nr = '00000001';
   const csvWithNr = (account, value, revenueCode) =>
-    [account, powerCode, 'PO', revenueCode, 'NR', ...Array(8).fill(''), value, 'beginning_balance', 'D'].join(';');
+    [account, powerCode, 'PO', '', '', '', '', revenueCode, 'NR', ...Array(4).fill(''), value, 'beginning_balance', 'D'].join(';');
   await mockSiconfi(context, baseURL, filters => {
     const month = Number(filters.get('me_referencia'));
     const accountClass = Number(filters.get('classe_conta'));
@@ -447,8 +449,12 @@ test('mantém divergências confiáveis em Avisos quando outro saldo tem NR inv�
   const result = page.getByRole('tabpanel', { name: 'Resultado' });
   const finding = result.getByRole('row').filter({ hasText: 'C03' });
   await expect(finding).toHaveCount(1);
-  await expect(finding).toContainText('Linha 3');
-  await expect(finding).toContainText(accountWithInvalidNr);
+  await expect(finding.getByText('Natureza da Receita (NR) inválida', { exact: true })).toBeVisible();
+  await expect(finding).toContainText(`Conta: ${accountWithInvalidNr} · Linha: 3`);
+  await expect(finding).toContainText('Valor informado: ERRO');
+  await expect(finding.getByText('ERRO', { exact: true })).toHaveCSS('color', 'rgb(181, 29, 29)');
+  await expect(finding).toContainText('Correção: informe um código de Natureza da Receita válido, composto por 8 dígitos numéricos.');
+  await expect(finding).toContainText('Regra C03 · Campo 8 · IC4 · Par 4');
   await expect(result.getByRole('table', { name: 'Avisos da comparação entre competências' })).toHaveCount(0);
 
   await page.getByRole('tab', { name: 'Avisos' }).click();

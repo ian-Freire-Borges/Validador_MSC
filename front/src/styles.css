@@ -181,11 +181,15 @@ tbody tr:nth-child(even) { background: #f6faf9; }
 .error-table td:last-child { overflow-wrap: anywhere; }
 .report-findings { border: 1px solid #d1dfdc; border-radius: .45rem; }
 .report-findings table { font-size: .875rem; line-height: 1.35; }
-.report-findings :is(th, td) { padding: .35rem .65rem; }
-.report-findings thead { color: #16463e; background: #e0ebe8; }
-.report-findings :is(th, td):first-child { border-inline-end: 1px solid #d1dfdc; }
+.report-findings th { padding: .55rem .65rem; }
+.report-findings td { padding: .9rem .65rem; }
+.report-findings thead { color: #075a4e; background: #d9e8e4; }
+.report-findings tbody tr:nth-child(even) { background: #f0f6f4; }
 .report-findings tbody tr:last-child td { border-bottom: 0; }
-.report-findings .report-reference { font-size: .8rem; }
+.finding-message > * + * { margin-block-start: .3rem; }
+.finding-title { display: block; font-size: 1rem; }
+.finding-value { color: #b51d1d; }
+.report-findings .report-reference { color: #565e5c; font-size: inherit; }
 .error-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; margin-top: 1rem; }
 .error-footer p { margin: 0; }
 .observed { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 8rem; }
