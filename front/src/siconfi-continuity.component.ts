@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, input, signal } from '@angular/core';
 import type { OnChanges, OnDestroy } from '@angular/core';
 import type { MonthlyBalances } from './monthly-balances.ts';
@@ -8,6 +9,7 @@ import { advisoryBalance, formatCompetence } from './report-presentation.ts';
 
 @Component({
   selector: 'msc-siconfi-continuity',
+  imports: [NgTemplateOutlet],
   templateUrl: './siconfi-continuity.html',
 })
 export class SiconfiContinuity implements OnChanges, OnDestroy {
@@ -16,6 +18,7 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly period = input.required<string | null>();
   readonly pageSize = 50;
   readonly advisoryBalance = advisoryBalance;
+  readonly currentMonth = computed(() => formatCompetence(this.period()));
   readonly busy = signal(false);
   readonly status = signal('');
   readonly result = signal<PreviousBalanceResult | null>(null);

@@ -1,29 +1,26 @@
 <section class="report-section" aria-labelledby="siconfi-continuity">
-  <h3 id="siconfi-continuity">Avisos de saldos entre competências</h3>
+  @if (!rows().length) {
+    <h3 id="siconfi-continuity">Avisos de saldos entre competências</h3>
+  }
   @if (balances()) {
-    <p class="report-reference">Os avisos de saldo entre competências têm caráter informativo. <a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
-    <p role="status" aria-live="polite">{{ status() }}</p>
+    @if (!rows().length) {
+      <p class="report-reference">Os avisos de saldo entre competências têm caráter informativo. <a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
+    }
+    <p role="status" aria-live="polite" [class.sr-only]="rows().length">{{ status() }}</p>
     @if (result(); as result) {
-      <section class="report-direction">
-        <h4>Saldo inicial × saldo final do mês anterior</h4>
-        <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável' && result.state !== 'Sem referência na API') { · Referência {{ referenceMonth(result) }} }</p>
-        @if (result.state === 'Sem referência na API') {
-          <p>A consulta pública do Siconfi não retornou registros para o saldo de {{ referenceMonth(result) }}.</p>
-          @if (result.message) {
-            <p>{{ result.message }}</p>
+      @if (rows().length) {
+        <div class="continuity-summary">
+          <h3 id="siconfi-continuity">
+            <span class="continuity-summary-icon" aria-hidden="true">!</span>
+            {{ rows().length }} {{ rows().length === 1 ? 'aviso' : 'avisos' }} de saldo entre competências
+          </h3>
+          <p class="continuity-summary-period"><span>{{ referenceMonth(result) }}</span> → <span>{{ currentMonth() }}</span></p>
+          @if (result.state === 'Parcial' || result.state === 'Inconclusiva') {
+            <p class="continuity-summary-limitation">Comparação {{ result.state.toLowerCase() }}: {{ result.message }}</p>
           }
-        } @else {
-          <p>{{ result.message }}</p>
-          @if (result.missingInCsv || result.missingInSiconfi) {
-            <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
-            @if (result.zeroWithoutPair; as zero) {
-              @if (zero.csv || zero.siconfi) {
-                <p>Entre as combinações sem par, o saldo líquido é zero em {{ zero.csv }} das que só constam no CSV e em {{ zero.siconfi }} das que só constam no Siconfi.</p>
-              }
-            }
-          }
-        }
-        @if (rows().length) {
+          <p class="report-reference">Os avisos possuem caráter informativo e não são impeditivos.</p>
+        </div>
+        <div class="continuity-details">
           <div class="table-scroll report-findings" role="region" tabindex="0" [attr.aria-label]="'Detalhes da comparação com a competência ' + referenceMonth(result)">
             <table class="error-table">
               <caption class="sr-only">Avisos da comparação entre competências</caption>
@@ -75,8 +72,34 @@
               <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
             </nav>
           }
+          <ng-container [ngTemplateOutlet]="pairDetails"></ng-container>
+          <p class="report-reference"><a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
+        </div>
+      } @else {
+        <section class="report-direction">
+          <h4>Saldo inicial × saldo final do mês anterior</h4>
+          <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável' && result.state !== 'Sem referência na API') { · Referência {{ referenceMonth(result) }} }</p>
+          @if (result.state === 'Sem referência na API') {
+            <p>A consulta pública do Siconfi não retornou registros para o saldo de {{ referenceMonth(result) }}.</p>
+          }
+          @if (result.message) {
+            <p>{{ result.message }}</p>
+          }
+          @if (result.state !== 'Sem referência na API') {
+            <ng-container [ngTemplateOutlet]="pairDetails"></ng-container>
+          }
+        </section>
+      }
+      <ng-template #pairDetails>
+        @if (result.missingInCsv || result.missingInSiconfi) {
+          <p>{{ result.missingInCsv + result.missingInSiconfi }} combinações sem par · {{ result.missingInCsv }} só no Siconfi e {{ result.missingInSiconfi }} só no CSV.</p>
+          @if (result.zeroWithoutPair; as zero) {
+            @if (zero.csv || zero.siconfi) {
+              <p>Entre as combinações sem par, o saldo líquido é zero em {{ zero.csv }} das que só constam no CSV e em {{ zero.siconfi }} das que só constam no Siconfi.</p>
+            }
+          }
         }
-      </section>
+      </ng-template>
     }
   } @else if (period() === '2026-13') {
     <p>Não aplicável ao encerramento 2026-13.</p>
