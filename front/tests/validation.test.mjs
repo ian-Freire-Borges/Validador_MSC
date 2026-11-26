@@ -41,7 +41,7 @@ test('arquivo mensal canônico é determinístico e preserva regras sem candidat
   assert.deepEqual(result, evaluate(file()));
   assert.deepEqual(Object.keys(result.rules), Object.keys(rules));
   for (const id of Object.keys(rules)) {
-    assert.equal(result.rules[id].state, ['C06', 'C07'].includes(id) ? 'Não aplicável' : 'Conforme', id);
+    assert.equal(result.rules[id].state, ['C06', 'C07', 'C09'].includes(id) ? 'Não aplicável' : 'Conforme', id);
   }
 });
 
@@ -213,7 +213,7 @@ test('E10/C02/C03/C04/C05: pares em posições livres e dependências locais', (
   assert.equal(width.rules.C08.state, 'Bloqueada');
   checkFinding(evaluate(file(makeRow({ 4: '12345678', 5: 'NR' }))), 'C04', 3, 5, 'NR');
   checkFinding(evaluate(file(makeRow({ 2: '', 3: '' }))), 'C05', 3, undefined);
-  assert.equal(evaluate(file(makeRow({ 4: '0123', 5: 'FR' }))).summary, good);
+  assert.equal(evaluate(file(makeRow({ 4: '1500', 5: 'FR' }))).summary, good);
 });
 
 test('C01/C06/C07/C08: plano de contas, domínios ativos e casos adiados', () => {
@@ -228,10 +228,43 @@ test('C01/C06/C07/C08: plano de contas, domínios ativos e casos adiados', () =>
   checkFinding(evaluate(file(makeRow({ 1: '211410102', 4: '2', 5: 'DC' }))), 'C07', 3, 4, '2');
   for (const po of ['10131', '20231', '10111']) assert.equal(evaluate(file(makeRow({ 2: po }))).rules.C08.state, 'Conforme');
   checkFinding(evaluate(file(makeRow({ 2: '99999' }))), 'C08', 3, 2, '99999');
-  assert.equal(evaluate(file(makeRow({ 4: '9999', 5: 'FR' }))).summary, good);
   const resultAccount = Object.keys(catalog.accounts).find(code => /^[34]/.test(code));
   assert.ok(resultAccount);
   assert.equal(evaluate(file(makeRow({ 1: resultAccount }), { first: '3550308EX;2026-13' })).summary, good);
+});
+
+test('C09 aplica prefixos e códigos principais subnacionais do catálogo FR 2026', () => {
+  const funding = (code, fields = {}) => makeRow({ 8: code, 9: 'FR', ...fields });
+  for (const code of ['1500', '2500', '9500', '1898', '1899', '1704']) {
+    const result = evaluate(file(funding(code)));
+    assert.equal(result.rules.C09.state, 'Conforme', code);
+    assert.equal(result.summary, good, code);
+  }
+  for (const code of ['0500', '3500', '1504', '1999', '1499']) {
+    const result = evaluate(file(funding(code)));
+    checkFinding(result, 'C09', 3, 8, code);
+    const finding = result.findings.find(item => item.id === 'C09');
+    assert.equal(finding.accountCode, '111110100');
+    assert.equal(finding.fieldName, 'IC4');
+    assert.match(finding.expected, /bloco subnacional/);
+    assert.equal(result.rules.C03.state, 'Conforme', code);
+    assert.equal(result.rules.C04.state, 'Conforme', code);
+  }
+  const malformed = evaluate(file(funding('*ERRO*')));
+  checkFinding(malformed, 'C03', 3, 8, '*ERRO*');
+  assert.equal(malformed.rules.C09.state, 'Bloqueada');
+  assert.ok(!malformed.findings.some(item => item.id === 'C09'));
+  const missing = evaluate(file(funding('')));
+  checkFinding(missing, 'E10', 3, 8, '');
+  assert.equal(missing.rules.C09.state, 'Bloqueada');
+  const accountWithoutFunding = Object.keys(catalog.accounts).find(code => !catalog.combinations[catalog.accounts[code]].includes('FR'));
+  assert.ok(accountWithoutFunding);
+  const incompatible = evaluate(file(funding('1504', { 1: accountWithoutFunding })));
+  checkFinding(incompatible, 'C04', 3, 9, 'FR');
+  checkFinding(incompatible, 'C09', 3, 8, '1504');
+  const otherScope = evaluate(file(funding('1504'), { first: '35EX;2026-01' }));
+  assert.equal(otherScope.rules.C09.state, 'Bloqueada');
+  assert.ok(!otherScope.findings.some(item => item.id === 'C09'));
 });
 
 test('catálogo incompatível bloqueia dependências e mantém as estruturais', () => {

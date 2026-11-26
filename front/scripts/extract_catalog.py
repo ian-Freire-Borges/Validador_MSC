@@ -16,7 +16,7 @@ FILES = {
         "2026/2026_Anexo_II_Portaria_STN_642_Leiaute_MSC_08072026.xlsx",
         "2026-07-08",
         "Leiaute MSC!A3:P6123; PcaspEstendido2026!H/L/M/O/P; Conjunto de IC!A4:F12; "
-        "Informações Complementares!B6:F14; PO!A6:B97; Observações!A3:A10",
+        "Informações Complementares!B6:F14; PO!A6:B97; FR 2026!A7:B9 e A12:B121; Observações!A3:A10",
     ),
     "V": ("2026/2026_Regras_de_Validacao_MSC_24112025.pdf", "2025-11-24", "p. 2–7"),
     "T": ("2026/2026_Template_MSC_15012026.csv", "2026-01-15", "linhas 1–2 e registros"),
@@ -92,6 +92,15 @@ def extract_workbook(source):
     for code, description in workbook["PO"].iter_rows(min_row=6, max_row=97, max_col=2, values_only=True):
         require(description and code is not None, "II: linha PO sem código ou descrição")
         domains["PO"].append(cell(code))
+    funding = workbook["FR 2026"]
+    prefixes = [cell(row[0]) for row in funding.iter_rows(min_row=7, max_row=9, max_col=1, values_only=True)]
+    require(prefixes == ["1", "2", "9"], "II FR 2026: prefixos divergentes")
+    suffixes = [
+        cell(code) for code, description in funding.iter_rows(min_row=15, max_row=121, max_col=2, values_only=True)
+        if description and re.fullmatch(r"[5-9][0-9]{2}", cell(code))
+    ]
+    require(len(suffixes) == len(set(suffixes)) == 98, "II FR 2026: domínio subnacional divergente")
+    domains["FR"] = [prefix + suffix for prefix in prefixes for suffix in suffixes]
     for kind, domain in domains.items():
         require(domain and len(domain) == len(set(domain)), f"II: domínio {kind} vazio ou duplicado")
         require(all(re.fullmatch(r"[0-9]{" + str(types[kind]) + "}", code) for code in domain), f"II: domínio {kind} com largura incorreta")
@@ -143,7 +152,7 @@ def build():
     require(len(template) == 6121 and template[1].split(";") == catalog["header"]
             and all(len(line.split(";")) == 16 for line in template),
             "T: estrutura não coincide com o leiaute")
-    payload = dict(year=2026, rulesVersion="ARQ-MVP-001-ACEITE+E02", sources=sources, **catalog, institutions=institutions,
+    payload = dict(year=2026, rulesVersion="ARQ-MVP-001-ACEITE+E02+C09", sources=sources, **catalog, institutions=institutions,
                    extraction=dict(institutionPages=pages, eligiblePcasp=pcasp_count, institutionAmbiguities=[]))
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return dict(version=f"2026-{hashlib.sha256(encoded).hexdigest()}", **payload)

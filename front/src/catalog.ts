@@ -26,12 +26,13 @@ export const rules = {
   C06: ['Domínio FP', 'I p. 8 e 11; II Informações Complementares!B7:F7'],
   C07: ['Domínio DC', 'I p. 8 e 11; II Informações Complementares!B8:F8'],
   C08: ['Domínio PO', 'V p. 5(b); I p. 7 e 11; II PO!A6:B97'],
+  C09: ['Domínio FR municipal', 'I p. 8 e 11; II FR 2026!A7:B9 e A12:B121'],
 } as const;
 
 export const widths = { PO: 5, FP: 1, DC: 1, FR: 4, CO: 4, NR: 8, ND: 8, FS: 5, AI: 4 };
 export const valueTypes = ['beginning_balance', 'period_change', 'ending_balance'];
 export const natures = ['D', 'C'];
-const approvedVersion = '2026-fe87bd0f80386d7ffd1b20e3d61fe2ec879632ca2d977a53f7d972b5061ec35f';
+const approvedVersion = '2026-97efaea702c423d4039347e4452dd2bc0bccd2132cfab450405411aa591dfb1d';
 
 export interface Catalog {
   version: string;
@@ -58,7 +59,7 @@ export function compatibleCatalog(value: unknown): value is Catalog {
   const catalog = value as Catalog;
   if (
     catalog.version !== approvedVersion || catalog.year !== 2026 ||
-    catalog.rulesVersion !== 'ARQ-MVP-001-ACEITE+E02' ||
+    catalog.rulesVersion !== 'ARQ-MVP-001-ACEITE+E02+C09' ||
     !['I', 'II', 'V', 'T', 'S'].every(key => {
       const source = catalog.sources?.[key];
       return source?.path && source.edition && source.region && /^[a-f0-9]{64}$/.test(source.sha256);
@@ -68,8 +69,9 @@ export function compatibleCatalog(value: unknown): value is Catalog {
     !catalog.widths || Object.keys(catalog.widths).length !== Object.keys(widths).length ||
     !Object.entries(widths).every(([kind, width]) => catalog.widths[kind] === width) ||
     !sameList(catalog.domains?.['FP'], ['1', '2']) || !sameList(catalog.domains?.['DC'], ['1']) ||
-    !catalog.domains || Object.keys(catalog.domains).length !== 3 ||
-    !validList(catalog.domains['PO'], 92, code => /^[0-9]{5}$/.test(code))
+    !catalog.domains || Object.keys(catalog.domains).length !== 4 ||
+    !validList(catalog.domains['PO'], 92, code => /^[0-9]{5}$/.test(code)) ||
+    !validList(catalog.domains['FR'], 294, code => /^[129][5-9][0-9]{2}$/.test(code))
   ) return false;
 
   if (!catalog.combinations || Object.keys(catalog.combinations).length !== 9 ||

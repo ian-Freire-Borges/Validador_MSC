@@ -58,10 +58,10 @@ export interface ValidationResult {
   summary: 'Pendências nas verificações do MVP 1.1' | 'Verificação incompleta' | 'Sem pendências nas verificações executadas do MVP 1.1';
 }
 
-const contentRules: RuleId[] = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08'];
+const contentRules: RuleId[] = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09'];
 const recordRules: RuleId[] = ['E06', 'E07', 'E08', 'E10', ...contentRules];
 const dataRules: RuleId[] = ['E05', ...recordRules];
-const domainRules = { FP: 'C06', DC: 'C07', PO: 'C08' } as const;
+const domainRules = { FP: 'C06', DC: 'C07', PO: 'C08', FR: 'C09' } as const;
 const ruleIds = Object.keys(validationRules) as RuleId[];
 
 function location(line: number, fieldIndex?: number, fieldName?: string): Location {
@@ -273,21 +273,28 @@ export function validate(
           else block('C04', 'conta');
           let inDomain = true;
           if (domainId) {
-            if (wide) inDomain = check(domainId, catalog.domains[kind].includes(ic), icAt, ic, kind === 'PO' ? 'Código da aba PO do Anexo II' : catalog.domains[kind].join(', '));
+            if (wide) {
+              const expected = kind === 'PO' ? 'Código da aba PO do Anexo II' : kind === 'FR'
+                ? 'Código FR municipal da aba FR 2026 do Anexo II, com prefixo 1, 2 ou 9 e código principal listado no bloco subnacional'
+                : catalog.domains[kind].join(', ');
+              inDomain = check(domainId, catalog.domains[kind].includes(ic), icAt, ic, expected);
+            }
             else block(domainId, 'largura');
           }
-          if (monthly && wide && allowed && inDomain) trustedPairs.push([kind, ic]);
+          if (monthly && wide && allowed && (inDomain || kind === 'FR')) trustedPairs.push([kind, ic]);
         }
         if (!contentBlocked) check('C05', po, location(lineCount), 'Nenhum par IC/PO completo', 'Pelo menos um par IC/PO completo');
         if (account) {
           for (let index = beforeValues; index < findings.length; index++) findings[index].accountCode = account;
         }
         if (!contentBlocked) {
+          const contentFindings = findings.slice(beforeContent);
           if (!permitted) balances.blockFile('conta', { rule: 'C01', line: lineCount, field: 'CONTA' });
-          else balances.record(lineCount, account, pairs, findings.slice(beforeContent).map(balanceOrigin).concat(repeated),
+          else balances.record(lineCount, account, pairs, contentFindings.map(balanceOrigin).concat(repeated),
             value, typeIndex, fields[15], findings.slice(beforeValues, beforeContent).map(balanceOrigin));
           if (monthly) {
-            const complete = Boolean(permitted) && beforeContent === findings.length && repeated.length === 0;
+            // The historical API comparison retains the original structural criteria for FR.
+            const complete = Boolean(permitted) && contentFindings.every(finding => finding.id === 'C09') && repeated.length === 0;
             const dimensions = complete ? pairs : uncertainPair ? [] : trustedPairs.filter(([kind]) => !repeatedTypes.has(kind));
             monthly.collector.record({ account: permitted ? account : undefined, dimensions, complete },
               fields[14], value, fields[15], beforeValues === beforeContent);

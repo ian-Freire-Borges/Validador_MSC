@@ -106,11 +106,29 @@ test('mostra a falha de FR e a conta da própria linha na aba Resultado', async 
   await expect(finding).toContainText('Regra C03 · Campo 6 · IC3 · Par 3');
   await expect(result.getByText(/Confira o cadastro e o vínculo da fonte/)).toBeVisible();
   await expect(result.getByText('Corrija os erros listados abaixo antes de enviar a MSC ao Siconfi.')).toBeVisible();
-  await expect(result.getByRole('list', { name: 'Motivos das verificações pendentes' }).getByRole('listitem')).toHaveText(
-    'A combinação de informações complementares está incompleta, inválida ou ambígua.');
+  await expect(result.getByRole('list', { name: 'Motivos das verificações pendentes' }).getByRole('listitem')).toHaveText([
+    'Um código de informação complementar não tem a quantidade de dígitos ou o formato exigido.',
+    'A combinação de informações complementares está incompleta, inválida ou ambígua.',
+  ]);
+  await expect(result.getByRole('row').filter({ hasText: 'Regra C09' })).toHaveCount(0);
   await expect(result.getByText('A pré-validação local não garante aceitação pelo Siconfi.')).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Avisos' }).getByText('!', { exact: true })).toHaveCount(0);
   expect(calls).toHaveLength(0);
+});
+
+test('mostra FR bem formada fora do domínio municipal como erro de conteúdo localizado', async ({ page, context, baseURL }) => {
+  await mockSiconfi(context, baseURL, () => []);
+  await validateFile(page, '3550308EX', [row(debitAccount, '0.00', 'ending_balance', 'D', '1504')]);
+
+  const result = page.getByRole('tabpanel', { name: 'Resultado' });
+  const finding = result.getByRole('row').filter({ hasText: 'Regra C09' });
+  await expect(finding.getByRole('cell', { name: 'Conteúdo', exact: true })).toBeVisible();
+  await expect(finding).toContainText('Fonte de Recursos (FR) fora do domínio municipal de 2026.');
+  await expect(finding).toContainText('Conta: ' + debitAccount + ' · Linha: 3');
+  await expect(finding).toContainText('Valor informado: 1504');
+  await expect(finding).toContainText('prefixo 1, 2 ou 9 e código principal listado no bloco subnacional');
+  await expect(finding).toContainText('Regra C09 · Campo 6 · IC3 · Par 3');
+  await expect(result.getByRole('row').filter({ hasText: 'Regra C03' })).toHaveCount(0);
 });
 
 test('mostra consistência e equilíbrio patrimonial na aba Resultado', async ({ page, context, baseURL }) => {
