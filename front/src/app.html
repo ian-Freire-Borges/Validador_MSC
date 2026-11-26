@@ -79,10 +79,12 @@
         </button>
         <button type="button" role="tab" id="avisos-aba" aria-controls="avisos-painel" #noticesTab
                 [attr.aria-selected]="activeReportTab() === 'avisos'" [tabIndex]="activeReportTab() === 'avisos' ? 0 : -1"
-                [attr.aria-describedby]="noticesNeedAttention() ? 'avisos-atencao' : null"
+                [attr.aria-describedby]="noticesBusy() ? 'avisos-andamento' : noticesNeedAttention() ? 'avisos-atencao' : null"
                 (click)="activeReportTab.set('avisos')">
           Avisos
-          @if (noticesNeedAttention()) {
+          @if (noticesBusy()) {
+            <span class="report-tab-spinner" aria-hidden="true"></span>
+          } @else if (noticesNeedAttention()) {
             <span class="report-tab-attention" aria-hidden="true">!</span>
           }
         </button>
@@ -90,7 +92,9 @@
       @if (errorCount()) {
         <span id="resultado-atencao" class="sr-only screen-only">Há erros na pré-validação.</span>
       }
-      @if (noticesNeedAttention()) {
+      @if (noticesBusy()) {
+        <span id="avisos-andamento" class="sr-only screen-only">A comparação com o Siconfi está em andamento.</span>
+      } @else if (noticesNeedAttention()) {
         <span id="avisos-atencao" class="sr-only screen-only">Há avisos que merecem atenção.</span>
       }
       <div id="resultado-painel" role="tabpanel" aria-labelledby="resultado-aba" tabindex="0"

@@ -20,6 +20,7 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly formatCompetence = formatCompetence;
   readonly busy = signal(false);
   readonly status = signal('');
+  readonly consultedPages = signal(0);
   readonly results = signal<DirectionResult[]>([]);
   readonly needsAttention = computed(() => this.results().some(({ state }) =>
     state === 'Divergente' || state === 'Parcial' || state === 'Inconclusiva'));
@@ -37,6 +38,7 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
     this.pages.set({ anterior: 1, posterior: 1 });
     this.hypothesisPages.set({ anterior: 1, posterior: 1 });
     this.status.set('');
+    this.consultedPages.set(0);
   }
 
   ngOnDestroy(): void {
@@ -49,12 +51,12 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
     const request = new AbortController();
     this.request = request;
     this.busy.set(true);
-    this.status.set('Consultando as competências vizinhas…');
+    this.status.set('A comparação com o Siconfi está em andamento.');
     try {
       await compareMonthlyBalances(balances, historyService.load.bind(historyService), request.signal, result => {
         if (this.request === request) this.results.update(results => [...results, result]);
       }, pages => {
-        if (this.request === request) this.status.set('Páginas consultadas no Siconfi: ' + pages + '.');
+        if (this.request === request) this.consultedPages.set(pages);
       });
       if (this.request === request) {
         this.status.set(balances.anterior.blocked && balances.posterior.blocked

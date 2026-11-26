@@ -46,6 +46,7 @@ class App implements OnDestroy {
   readonly pageSize = 50;
   readonly printing = signal(false);
   readonly noticesNeedAttention = computed(() => this.continuity()?.needsAttention() ?? false);
+  readonly noticesBusy = computed(() => this.continuity()?.busy() ?? false);
   readonly findings = computed(() => this.result()?.findings.filter(finding => finding.status === 'Falhou') ?? []);
   readonly hasSourceOfFundsExportError = computed(() => this.findings().some(finding => this.isSourceOfFundsExportError(finding)));
   readonly currency = currency;

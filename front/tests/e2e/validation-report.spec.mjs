@@ -211,6 +211,7 @@ test('cancela a validação local em andamento e permite validar novamente', asy
 });
 
 test('consulta automaticamente e mantém a divergência do mês anterior apenas em Avisos', async ({ page, context, baseURL }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const calls = [];
   await mockSiconfi(context, baseURL, filters => {
     expect([...filters.keys()].sort()).toEqual([
@@ -237,7 +238,27 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   await expect(result.getByText('Sem erros nas verificações executadas')).toBeVisible();
   await expect(result.getByText('Divergência confirmada')).toHaveCount(0);
   await expect(noticesTab).toHaveAttribute('aria-selected', 'false');
+  await expect(noticesTab).toHaveAccessibleDescription('A comparação com o Siconfi está em andamento.');
+  const spinner = noticesTab.locator('.report-tab-spinner');
+  await expect(spinner).toBeVisible();
+  await expect(spinner).toHaveCSS('animation-name', 'none');
+
+  await resultTab.press('ArrowRight');
+  await expect(noticesTab).toBeFocused();
+  await expect(noticesTab).toHaveAttribute('aria-selected', 'true');
+  const notices = page.getByRole('tabpanel', { name: 'Avisos' });
+  const comparisonHeading = notices.getByRole('heading', { name: 'Avisos na comparação entre competências' });
+  await expect(comparisonHeading).toBeVisible();
+  await expect(notices.getByRole('status')).toHaveText('A comparação com o Siconfi está em andamento.');
+  await expect(notices.getByText(/^Páginas consultadas no Siconfi: [1-9]\d*\.$/)).toBeVisible();
+  await expect(notices.getByText('Aguarde a conclusão para visualizar todas as divergências encontradas.')).toBeVisible();
+  await expect(notices.getByText('Algumas verificações podem permanecer parciais caso existam dados inválidos no CSV.')).toBeVisible();
+  await expect(notices.getByRole('button', { name: 'Cancelar comparação' })).toBeEnabled();
+
   await expect(noticesTab.getByText('!', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(spinner).toHaveCount(0);
+  await expect(comparisonHeading).toHaveCount(0);
+  await expect(notices.getByRole('button', { name: 'Cancelar comparação' })).toHaveCount(0);
   await expect(noticesTab).toHaveAccessibleDescription('Há avisos que merecem atenção.');
   await expect.poll(() => calls.length, { timeout: 25_000 }).toBe(16);
   expect(calls.map(({ month, accountClass, valueType }) => [month, accountClass, valueType])).toEqual([
@@ -245,10 +266,6 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
     ...Array.from({ length: 8 }, (_, index) => [11, index + 1, 'beginning_balance']),
   ]);
 
-  await resultTab.press('ArrowRight');
-  await expect(noticesTab).toBeFocused();
-  await expect(noticesTab).toHaveAttribute('aria-selected', 'true');
-  const notices = page.getByRole('tabpanel', { name: 'Avisos' });
   const divergence = notices.getByRole('row', { name: /Divergência confirmada/ });
   await expect(divergence).toContainText('Conta ' + debitAccount);
   await expect(divergence).toContainText('outubro de 2026');
@@ -284,6 +301,7 @@ test('não sinaliza atenção quando há somente ausência de referência na API
   await noticesTab.click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
   await expect(notices.getByText('Sem referência na API')).toBeVisible({ timeout: 15_000 });
+  await expect(noticesTab.locator('.report-tab-spinner')).toHaveCount(0);
   await expect(noticesTab.getByText('!', { exact: true })).toHaveCount(0);
   await expect(noticesTab).toHaveAccessibleDescription('');
 });
@@ -331,7 +349,7 @@ test('cancela a consulta Siconfi do CSV substituído e descarta a resposta tardi
   try {
     await validateFile(page, '2914604EX', balances);
     await page.getByRole('tab', { name: 'Avisos' }).click();
-    await expect(report.getByText('Consultando as competências vizinhas…')).toBeVisible();
+    await expect(report.getByRole('tabpanel', { name: 'Avisos' }).getByRole('status')).toHaveText('A comparação com o Siconfi está em andamento.');
     const url = await intercepted.promise;
     const aborted = page.waitForEvent('requestfailed', request => request.url() === url);
 
@@ -352,7 +370,7 @@ test('cancela a consulta Siconfi do CSV substituído e descarta a resposta tardi
   await page.getByRole('tab', { name: 'Avisos' }).click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
   await expect(notices.getByText(/Disponível para arquivos mensais de 2026 de municípios baianos/)).toBeVisible();
-  await expect(notices.getByText(/Divergência confirmada|setembro de 2026|Consultando as competências vizinhas/)).toHaveCount(0);
+  await expect(notices.getByText(/Divergência confirmada|setembro de 2026|A comparação com o Siconfi está em andamento/)).toHaveCount(0);
   expect(calls).toEqual(['2914604']);
 });
 

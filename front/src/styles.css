@@ -113,8 +113,48 @@ tbody tr:nth-child(even) { background: #f6faf9; }
   line-height: 1;
 }
 .report-tab-error { border-color: #a71924; background: #c8202b; color: #fff; }
+.report-tab-spinner {
+  display: inline-block;
+  inline-size: .8em;
+  block-size: .8em;
+  margin-inline-start: .45rem;
+  border: .15em dotted currentColor;
+  border-block-start-color: transparent;
+  border-radius: 50%;
+  vertical-align: -.1em;
+  animation: comparison-spin .85s linear infinite;
+}
+@keyframes comparison-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .report-tab-spinner { animation: none; }
+}
 .report-section { border-block-start: 1px solid #cfddd9; margin-block-start: 1.3rem; padding-block-start: 1.1rem; }
 .report-section h3, .report-direction h4 { margin-block: 0 .5rem; line-height: 1.3; }
+.comparison-progress {
+  display: flex;
+  gap: .8rem;
+  margin-block: .8rem;
+  padding: .8rem .95rem;
+  border: 1px solid #e8b334;
+  border-inline-start: .23rem solid #e3a300;
+  border-radius: .5rem;
+  background: #fdf6df;
+}
+.comparison-progress-icon {
+  display: grid;
+  place-items: center;
+  inline-size: 1.65rem;
+  block-size: 1.65rem;
+  flex: none;
+  border-radius: 50%;
+  background: #f5bd20;
+  color: #503200;
+  font-weight: 750;
+}
+.comparison-progress h4 { margin: 0; color: #65400a; line-height: 1.3; }
+.comparison-progress p { margin-block: .3rem; }
+.comparison-progress ul { margin-block: .4rem .65rem; padding-inline-start: 1.1rem; }
+.comparison-progress li::marker { color: #976400; }
 .report-note { background: #fcf5e7; padding: .65rem .8rem; border-inline-start: .2rem solid #855108; overflow-wrap: anywhere; }
 .report-direction { padding: .7rem .85rem; margin-block: .7rem; border: 1px solid #cfddd9; border-radius: .45rem; }
 .report-direction p { margin-block: .5rem; }

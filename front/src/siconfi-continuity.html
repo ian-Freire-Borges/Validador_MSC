@@ -2,10 +2,25 @@
   <h3 id="siconfi-continuity">Avisos de saldos entre competências</h3>
   @if (balances()) {
     <p class="report-reference">Os avisos de saldo entre competências têm caráter informativo. <a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
-    @if (busy()) {
-      <button type="button" class="secondary" (click)="cancel()">Cancelar comparação</button>
-    }
-    <p role="status" aria-live="polite">{{ status() }}</p>
+    <div [class.comparison-progress]="busy()">
+      @if (busy()) {
+        <span class="comparison-progress-icon" aria-hidden="true">!</span>
+      }
+      <div>
+        @if (busy()) {
+          <h4>Avisos na comparação entre competências</h4>
+        }
+        <p role="status" aria-live="polite">{{ status() }}</p>
+        @if (busy()) {
+          <ul>
+            <li aria-live="polite" aria-atomic="true">Páginas consultadas no Siconfi: {{ consultedPages() }}.</li>
+            <li>Aguarde a conclusão para visualizar todas as divergências encontradas.</li>
+            <li>Algumas verificações podem permanecer parciais caso existam dados inválidos no CSV.</li>
+          </ul>
+          <button type="button" class="secondary" (click)="cancel()">Cancelar comparação</button>
+        }
+      </div>
+    </div>
     @for (result of results(); track result.id) {
       <section class="report-direction">
         @let previous = result.id === 'anterior';
