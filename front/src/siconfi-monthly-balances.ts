@@ -2,14 +2,9 @@ import { widths } from './catalog.ts';
 import { add, decimal, format, negate } from './decimal.ts';
 import type { Decimal } from './decimal.ts';
 import { accumulateBalance, balanceKey, signedBalance } from './monthly-balances.ts';
-import type { AccountDimension, BalanceDirection, BalanceExclusion, MonthlyBalance, MonthlyBalances } from './monthly-balances.ts';
+import type { AccountDimension, BalanceExclusion, MonthlyBalance, MonthlyBalances } from './monthly-balances.ts';
 import { HistoryError } from './siconfi-history.ts';
 import type { Filters, HistoryPage, HistoryRow } from './siconfi-history.ts';
-
-export const monthlyDirections = [
-  { id: 'anterior', label: 'Saldo inicial × saldo final do mês anterior', shift: -1, reference: 'ending_balance' },
-  { id: 'posterior', label: 'Saldo final × saldo inicial do mês posterior', shift: 1, reference: 'beginning_balance' },
-] as const;
 
 export type MonthlyDifference = {
   key: string;
@@ -30,8 +25,7 @@ type DirectionDetails = {
   zeroWithoutPair?: { csv: number; siconfi: number };
   inferredDifferences?: InferredDifference[];
 };
-export type DirectionResult = {
-  id: BalanceDirection;
+export type PreviousBalanceResult = {
   month: number;
   state: 'Conforme' | 'Divergente' | 'Parcial' | 'Inconclusiva' | 'Não aplicável' | 'Sem referência na API';
   message: string;
@@ -156,81 +150,69 @@ type PageLoader = (filters: Filters, offset: number, signal: AbortSignal, limit:
 
 export async function compareMonthlyBalances(
   local: MonthlyBalances, load: PageLoader, signal: AbortSignal,
-  onDirection: (result: DirectionResult) => void, onPage?: (loaded: number) => void,
-): Promise<void> {
+): Promise<PreviousBalanceResult> {
   if (!/^29[0-9]{5}$/.test(local.entity) || !Number.isInteger(local.month) || local.month < 1 || local.month > 12) {
     throw new HistoryError('A comparação está disponível para municípios baianos em competências mensais de 2026.');
   }
+  signal.throwIfAborted();
+  const month = local.month - 1;
+  const result = (state: PreviousBalanceResult['state'], message: string,
+    details: DirectionDetails = { differences: [], missingInCsv: 0, missingInSiconfi: 0 }): PreviousBalanceResult =>
+    ({ month, state, message, ...details });
+  if (month === 0) return result('Não aplicável', 'A comparação não cruza exercícios nem inclui o encerramento.');
+  if (local.blocked) return result('Inconclusiva', 'O CSV tem dados inválidos ou incompletos que impedem esta comparação.');
+
   const deadline = AbortSignal.timeout(deadlineMs);
   const requestSignal = AbortSignal.any([signal, deadline]);
   let queries = 0;
-  let rateLimited = false;
-  for (const direction of monthlyDirections) {
+  const official = new Map<string, Decimal>();
+  const completedClasses = new Set<string>();
+  const limitations = new Set<string>();
+  if (local.exclusions.length) limitations.add('Há combinações excluídas por dados inválidos no CSV.');
+  for (let accountClass = 1; accountClass <= 8; accountClass++) {
     signal.throwIfAborted();
-    const { id, shift, reference } = direction;
-    const month = local.month + shift;
-    const publish = (state: DirectionResult['state'], message: string,
-      details: DirectionDetails = { differences: [], missingInCsv: 0, missingInSiconfi: 0 }) =>
-      onDirection({ id, month, state, message, ...details });
-    if (month < 1 || month > 12) {
-      publish('Não aplicável', 'A comparação não cruza exercícios nem inclui o encerramento.');
-      continue;
+    if (deadline.aborted || queries >= maximumPages) {
+      limitations.add(budgetMessage);
+      break;
     }
-    if (local[id].blocked) {
-      publish('Inconclusiva', 'O CSV tem dados inválidos ou incompletos que impedem esta comparação.');
-      continue;
-    }
-    const official = new Map<string, Decimal>();
-    const completedClasses = new Set<string>();
-    const limitations = new Set<string>();
-    if (local[id].exclusions.length) limitations.add('Há combinações excluídas por dados inválidos no CSV.');
-    for (let accountClass = 1; accountClass <= 8; accountClass++) {
-      signal.throwIfAborted();
-      if (rateLimited || deadline.aborted || queries >= maximumPages) {
-        limitations.add(rateLimited ? 'Consulta interrompida após atingir o limite do Siconfi (HTTP 429).' : budgetMessage);
-        break;
-      }
-      const classBalances = new Map<string, Decimal>();
-      try {
-        const filters: Filters = { entity: local.entity, year: '2026', month: String(month), accountClass: String(accountClass), valueType: reference };
-        let offset: number | null = 0;
-        while (offset !== null) {
-          if (queries >= maximumPages || deadline.aborted) throw new HistoryError(budgetMessage);
-          signal.throwIfAborted();
-          queries++;
-          const page = await load(filters, offset, requestSignal, searchLimit);
-          requestSignal.throwIfAborted();
-          for (const row of page.rows) {
-            const balance = normalizeMonthlyRow(row);
-            if (balance.key[0] !== filters.accountClass) ambiguous();
-            accumulateBalance(classBalances, balance.key, balance.net);
-          }
-          offset = page.nextOffset;
-          onPage?.(queries);
-        }
-        completedClasses.add(filters.accountClass);
-        for (const [key, net] of classBalances) official.set(key, net);
-      } catch (error) {
+    const classBalances = new Map<string, Decimal>();
+    try {
+      const filters: Filters = { entity: local.entity, year: '2026', month: String(month), accountClass: String(accountClass), valueType: 'ending_balance' };
+      let offset: number | null = 0;
+      while (offset !== null) {
+        if (queries >= maximumPages || deadline.aborted) throw new HistoryError(budgetMessage);
         signal.throwIfAborted();
-        if (error instanceof HistoryError && error.status === 429) rateLimited = true;
-        limitations.add(deadline.aborted ? budgetMessage : error instanceof HistoryError
-          ? error.message : 'A consulta ao Siconfi não foi concluída.');
-        if (rateLimited || deadline.aborted) break;
+        queries++;
+        const page = await load(filters, offset, requestSignal, searchLimit);
+        requestSignal.throwIfAborted();
+        for (const row of page.rows) {
+          const balance = normalizeMonthlyRow(row);
+          if (balance.key[0] !== filters.accountClass) ambiguous();
+          accumulateBalance(classBalances, balance.key, balance.net);
+        }
+        offset = page.nextOffset;
       }
-    }
-    if (completedClasses.size === 8 && official.size === 0) {
-      publish('Sem referência na API', [...limitations].join(' '));
-      continue;
-    }
-    const { matched, ...details } = compare(local[id].balances, official, completedClasses, local[id].exclusions);
-    if (limitations.size) {
-      publish(matched ? 'Parcial' : 'Inconclusiva', [...limitations].join(' '), details);
-    } else if (details.missingInCsv || details.missingInSiconfi) {
-      publish('Inconclusiva', 'Há combinações sem saldo correspondente.', details);
-    } else if (details.differences.length) {
-      publish('Divergente', 'Foram encontradas diferenças entre os saldos do CSV e os do Siconfi.', details);
-    } else {
-      publish('Conforme', 'Os saldos comparados coincidem.', details);
+      completedClasses.add(filters.accountClass);
+      for (const [key, net] of classBalances) official.set(key, net);
+    } catch (error) {
+      signal.throwIfAborted();
+      limitations.add(deadline.aborted ? budgetMessage : error instanceof HistoryError
+        ? error.message : 'A consulta ao Siconfi não foi concluída.');
+      if (deadline.aborted || (error instanceof HistoryError && error.status === 429)) break;
     }
   }
+  if (completedClasses.size === 8 && official.size === 0) {
+    return result('Sem referência na API', [...limitations].join(' '));
+  }
+  const { matched, ...details } = compare(local.balances, official, completedClasses, local.exclusions);
+  if (limitations.size) {
+    return result(matched ? 'Parcial' : 'Inconclusiva', [...limitations].join(' '), details);
+  }
+  if (details.missingInCsv || details.missingInSiconfi) {
+    return result('Inconclusiva', 'Há combinações sem saldo correspondente.', details);
+  }
+  if (details.differences.length) {
+    return result('Divergente', 'Foram encontradas diferenças entre os saldos do CSV e os do Siconfi.', details);
+  }
+  return result('Conforme', 'Os saldos comparados coincidem.', details);
 }

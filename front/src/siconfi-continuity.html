@@ -2,29 +2,10 @@
   <h3 id="siconfi-continuity">Avisos de saldos entre competências</h3>
   @if (balances()) {
     <p class="report-reference">Os avisos de saldo entre competências têm caráter informativo. <a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
-    <div [class.comparison-progress]="busy()">
-      @if (busy()) {
-        <span class="comparison-progress-icon" aria-hidden="true">!</span>
-      }
-      <div>
-        @if (busy()) {
-          <h4>Avisos na comparação entre competências</h4>
-        }
-        <p role="status" aria-live="polite">{{ status() }}</p>
-        @if (busy()) {
-          <ul>
-            <li aria-live="polite" aria-atomic="true">Páginas consultadas no Siconfi: {{ consultedPages() }}.</li>
-            <li>Aguarde a conclusão para visualizar todas as divergências encontradas.</li>
-            <li>Algumas verificações podem permanecer parciais caso existam dados inválidos no CSV.</li>
-          </ul>
-          <button type="button" class="secondary" (click)="cancel()">Cancelar comparação</button>
-        }
-      </div>
-    </div>
-    @for (result of results(); track result.id) {
+    <p role="status" aria-live="polite">{{ status() }}</p>
+    @if (result(); as result) {
       <section class="report-direction">
-        @let previous = result.id === 'anterior';
-        <h4>{{ previous ? directions[0].label : directions[1].label }}</h4>
+        <h4>Saldo inicial × saldo final do mês anterior</h4>
         <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável' && result.state !== 'Sem referência na API') { · Referência {{ referenceMonth(result) }} }</p>
         @if (result.state === 'Sem referência na API') {
           <p>A consulta pública do Siconfi não retornou registros para o saldo de {{ referenceMonth(result) }}.</p>
@@ -42,83 +23,59 @@
             }
           }
         }
-        @if (result.differences.length) {
+        @if (rows().length) {
           <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'Detalhes da comparação com a competência ' + referenceMonth(result)">
             <table class="error-table report-advisories">
-              <caption class="sr-only">Divergências verificadas entre competências</caption>
-              <thead><tr><th scope="col">Tipo de aviso</th><th scope="col">Mensagem</th></tr></thead>
+              <caption class="sr-only">Avisos da comparação entre competências</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Conta / ICs</th>
+                  <th scope="col">Saldo final (Siconfi)</th>
+                  <th scope="col">Saldo inicial (MSC atual)</th>
+                </tr>
+              </thead>
               <tbody>
-                @for (difference of visible(result); track difference.key) {
+                @for (row of visible(); track row.key) {
                   <tr>
-                    <td><span class="error-type report-advisory">Divergência confirmada</span></td>
                     <td>
-                      <strong>Conta {{ difference.key }}</strong>
-                      <div>O saldo {{ previous ? 'inicial' : 'final' }} no CSV de {{ formatCompetence(period()) }} é {{ currency(difference.local) }} e difere do saldo {{ previous ? 'final' : 'inicial' }} no Siconfi de {{ referenceMonth(result) }}, de {{ currency(difference.official) }}. Diferença de {{ currency(difference.difference) }} (CSV menos Siconfi).</div>
+                      <strong>{{ row.account }}</strong>
+                      @if (row.dimensions.length) {
+                        <div>{{ row.dimensions.join(' · ') }}</div>
+                      }
+                    </td>
+                    <td>
+                      @if (row.official === null) {
+                        R$ 0,00 <small class="report-inferred">inferido</small>
+                      } @else {
+                        {{ advisoryBalance(row.official) }}
+                      }
+                    </td>
+                    <td>
+                      @if (row.local === null) {
+                        R$ 0,00 <small class="report-inferred">inferido</small>
+                      } @else {
+                        {{ advisoryBalance(row.local) }}
+                      }
                     </td>
                   </tr>
                 }
               </tbody>
             </table>
           </div>
-          <p>Total de avisos de divergência {{ result.differences.length }}</p>
-          @if (pageCount(result) > 1) {
-            <nav class="pagination" [attr.aria-label]="'Paginação da comparação com a competência ' + referenceMonth(result)">
-              <button type="button" class="secondary" (click)="movePage(result.id, -1)" [disabled]="pages()[result.id] === 1">Anterior</button>
-              <span aria-live="polite">Página {{ pages()[result.id] }} de {{ pageCount(result) }}</span>
-              <button type="button" class="secondary" (click)="movePage(result.id, 1)" [disabled]="pages()[result.id] === pageCount(result)">Próxima</button>
-            </nav>
+          @if (result.differences.length) {
+            <p>Total de avisos de divergência {{ result.differences.length }}</p>
           }
-        }
-        @if (inferredRows().get(result.id); as inferred) {
-          @if (inferred.length) {
-            @let hypothesisPage = hypothesisPages()[result.id];
-            @let first = (hypothesisPage - 1) * pageSize;
-            <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'Avisos com zero inferido para ' + referenceMonth(result)">
-              <table class="error-table report-advisories">
-                <caption>Avisos com saldo zero inferido pelo Validador</caption>
-                <thead><tr><th scope="col">Combinação</th><th scope="col">Saldo encontrado</th><th scope="col">Saldo inferido</th><th scope="col">Diferença hipotética (CSV menos Siconfi)</th></tr></thead>
-                <tbody>
-                  @for (row of inferred.slice(first, first + pageSize); track row.entry.key) {
-                    <tr>
-                      @if (row.paired; as pair) {
-                        <td>
-                          <strong>Conta {{ pair.account }}</strong>
-                          <div>CSV: {{ pair.csvPairs }} @if (!pair.csvPairs.includes(pair.changedType + ' ')) { · {{ pair.changedType }} ausente }</div>
-                          <div>Siconfi: {{ pair.officialPairs }} @if (!pair.officialPairs.includes(pair.changedType + ' ')) { · {{ pair.changedType }} ausente }</div>
-                        </td>
-                        <td>
-                          <div>{{ previous ? 'Inicial' : 'Final' }} no CSV de {{ formatCompetence(period()) }}: {{ currency(row.entry.observed) }} ({{ row.entry.observed.startsWith('−') ? 'C' : 'D' }})</div>
-                          <div>{{ previous ? 'Final' : 'Inicial' }} no Siconfi de {{ referenceMonth(result) }}: {{ currency(pair.official.observed) }} ({{ pair.official.observed.startsWith('−') ? 'C' : 'D' }})</div>
-                        </td>
-                        <td>
-                          <div>Chave do CSV: R$ 0 inferido pelo Validador no Siconfi</div>
-                          <div>Chave do Siconfi: R$ 0 inferido pelo Validador no CSV</div>
-                        </td>
-                        <td>
-                          <div>Chave do CSV: {{ currency(row.entry.difference) }}</div>
-                          <div>Chave do Siconfi: {{ currency(pair.official.difference) }}</div>
-                        </td>
-                      } @else {
-                        <td>{{ row.entry.key }}</td>
-                        <td>{{ currency(row.entry.observed) }} · {{ row.entry.source }}</td>
-                        <td>R$ 0 inferido pelo Validador (chave ausente {{ row.entry.source === 'CSV' ? 'no Siconfi' : 'no CSV' }})</td>
-                        <td>{{ currency(row.entry.difference) }}</td>
-                      }
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-            <p>Total de avisos com zero inferido {{ result.inferredDifferences?.length }}
-              @if (inferred.length !== result.inferredDifferences?.length) { · Exibidos em {{ inferred.length }} linhas }
+          @if (result.inferredDifferences?.length) {
+            <p>Total de avisos com zero inferido {{ result.inferredDifferences.length }}
+              @if (inferredRows().length !== result.inferredDifferences.length) { · Exibidos em {{ inferredRows().length }} linhas }
             </p>
-            @if (inferred.length > pageSize) {
-              <nav class="pagination" [attr.aria-label]="'Paginação dos avisos com zero inferido para ' + referenceMonth(result)">
-                <button type="button" class="secondary" (click)="moveHypothesisPage(result.id, -1)" [disabled]="hypothesisPage === 1">Anterior</button>
-                <span aria-live="polite">Página {{ hypothesisPage }}</span>
-                <button type="button" class="secondary" (click)="moveHypothesisPage(result.id, 1)" [disabled]="first + pageSize >= inferred.length">Próxima</button>
-              </nav>
-            }
+          }
+          @if (pageCount() > 1) {
+            <nav class="pagination" [attr.aria-label]="'Paginação da comparação com a competência ' + referenceMonth(result)">
+              <button type="button" class="secondary" (click)="movePage(-1)" [disabled]="page() === 1">Anterior</button>
+              <span aria-live="polite">Página {{ page() }} de {{ pageCount() }}</span>
+              <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
+            </nav>
           }
         }
       </section>

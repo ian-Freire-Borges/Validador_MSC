@@ -4,6 +4,7 @@ import type { InferredDifference } from './siconfi-monthly-balances.ts';
 import type { RuleId } from './validation.ts';
 
 const monthFormatter = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const balanceFormatter = new Intl.NumberFormat('pt-BR');
 const findingTitles: Record<Exclude<RuleId, BalanceGroup['id']>, string> = {
   L01: 'O arquivo contém bytes inválidos para a leitura em UTF-8.',
   L02: 'A primeira linha não segue o formato dos metadados da MSC.',
@@ -41,6 +42,17 @@ export function formatCompetence(period: string | null): string {
 
 export function currency(value: string): string {
   return 'R$ ' + value.replace('.', ',');
+}
+
+export function advisoryBalance(value: string): string {
+  const credit = value.startsWith('−');
+  const magnitude = credit ? value.slice(1) : value;
+  const [integer, fraction = ''] = magnitude.split('.');
+  let cents = BigInt(integer + fraction.slice(0, 2).padEnd(2, '0'));
+  if (fraction.charAt(2) >= '5') cents += 1n;
+  const reais = balanceFormatter.format(cents / 100n);
+  const centavos = (cents % 100n).toString().padStart(2, '0');
+  return `R$\u00a0${reais},${centavos} (${credit ? 'C' : 'D'})`;
 }
 
 export function validationLabel(errorCount: number, incomplete: boolean): string {

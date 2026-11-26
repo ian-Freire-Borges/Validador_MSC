@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { currency, findingTitle, formatCompetence, groupInferredDifferences, validationLabel } from '../src/report-presentation.ts';
+import { advisoryBalance, currency, findingTitle, formatCompetence, groupInferredDifferences, validationLabel } from '../src/report-presentation.ts';
 import { validationRules } from '../src/validation.ts';
 
 test('formata a competência local sem inferir períodos fora do leiaute', () => {
@@ -15,6 +15,21 @@ test('formata a competência local sem inferir períodos fora do leiaute', () =>
 test('descreve cada regra e exibe valores exatos em reais', () => {
   for (const id of Object.keys(validationRules)) assert.match(findingTitle(id), /\.$/, id);
   assert.equal(currency('−9007199254740993.12345678901'), 'R$ −9007199254740993,12345678901');
+});
+
+test('formata saldos de aviso em reais com centavos e natureza contábil', () => {
+  assert.equal(advisoryBalance('−9007199254740993.125'), 'R$\u00a09.007.199.254.740.993,13 (C)');
+  assert.equal(advisoryBalance('1234'), 'R$\u00a01.234,00 (D)');
+  assert.equal(advisoryBalance('0'), 'R$\u00a00,00 (D)');
+});
+
+test('agrupa centenas de dígitos e arredonda centavos sem perder precisão', () => {
+  const magnitude = '9'.repeat(310);
+  const grouped = '9' + '.999'.repeat(103);
+  assert.equal(advisoryBalance('−' + magnitude + '.9949'), 'R$\u00a0' + grouped + ',99 (C)');
+  assert.equal(advisoryBalance(magnitude + '.995'), 'R$\u00a010' + '.000'.repeat(103) + ',00 (D)');
+  assert.equal(advisoryBalance('−0.0049'), 'R$\u00a00,00 (C)');
+  assert.equal(advisoryBalance('0.005'), 'R$\u00a00,01 (D)');
 });
 
 test('distingue erros, verificações bloqueadas e resultado sem falhas', () => {

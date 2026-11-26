@@ -236,7 +236,7 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   const noticesTab = page.getByRole('tab', { name: 'Avisos' });
   const result = page.getByRole('tabpanel', { name: 'Resultado' });
   await expect(result.getByText('Sem erros nas verificações executadas')).toBeVisible();
-  await expect(result.getByText('Divergência confirmada')).toHaveCount(0);
+  await expect(result.getByRole('table', { name: 'Avisos da comparação entre competências' })).toHaveCount(0);
   await expect(noticesTab).toHaveAttribute('aria-selected', 'false');
   await expect(noticesTab).toHaveAccessibleDescription('A comparação com o Siconfi está em andamento.');
   const spinner = noticesTab.locator('.report-tab-spinner');
@@ -248,33 +248,29 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   await expect(noticesTab).toHaveAttribute('aria-selected', 'true');
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
   const comparisonHeading = notices.getByRole('heading', { name: 'Avisos na comparação entre competências' });
-  await expect(comparisonHeading).toBeVisible();
+  await expect(comparisonHeading).toHaveCount(0);
   await expect(notices.getByRole('status')).toHaveText('A comparação com o Siconfi está em andamento.');
-  await expect(notices.getByText(/^Páginas consultadas no Siconfi: [1-9]\d*\.$/)).toBeVisible();
-  await expect(notices.getByText('Aguarde a conclusão para visualizar todas as divergências encontradas.')).toBeVisible();
-  await expect(notices.getByText('Algumas verificações podem permanecer parciais caso existam dados inválidos no CSV.')).toBeVisible();
-  await expect(notices.getByRole('button', { name: 'Cancelar comparação' })).toBeEnabled();
+  await expect(notices.getByRole('button', { name: 'Cancelar comparação' })).toHaveCount(0);
 
   await expect(noticesTab.getByText('!', { exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(spinner).toHaveCount(0);
-  await expect(comparisonHeading).toHaveCount(0);
-  await expect(notices.getByRole('button', { name: 'Cancelar comparação' })).toHaveCount(0);
   await expect(noticesTab).toHaveAccessibleDescription('Há avisos que merecem atenção.');
-  await expect.poll(() => calls.length, { timeout: 25_000 }).toBe(16);
   expect(calls.map(({ month, accountClass, valueType }) => [month, accountClass, valueType])).toEqual([
     ...Array.from({ length: 8 }, (_, index) => [9, index + 1, 'ending_balance']),
-    ...Array.from({ length: 8 }, (_, index) => [11, index + 1, 'beginning_balance']),
   ]);
 
-  const divergence = notices.getByRole('row', { name: /Divergência confirmada/ });
-  await expect(divergence).toContainText('Conta ' + debitAccount);
-  await expect(divergence).toContainText('outubro de 2026');
-  await expect(divergence).toContainText('setembro de 2026');
-  await expect(divergence).toContainText('Diferença de R$ 1');
+  const table = notices.getByRole('table', { name: 'Avisos da comparação entre competências' });
+  await expect(table.getByRole('columnheader')).toHaveText(['Conta / ICs', 'Saldo final (Siconfi)', 'Saldo inicial (MSC atual)']);
+  const divergence = table.getByRole('row', { name: new RegExp(debitAccount) });
+  await expect(divergence.getByRole('cell').first().locator('div')).toHaveText('PO ' + powerCode);
+  await expect(divergence.getByRole('cell').nth(1)).toHaveText('R$ 99,00 (D)');
+  await expect(divergence.getByRole('cell').nth(2)).toHaveText('R$ 100,00 (D)');
+  await expect(divergence.getByRole('cell').nth(1)).toHaveCSS('text-align', 'right');
+  await expect(divergence.locator('strong')).toHaveText(debitAccount);
+  await expect(notices.getByText('Referência setembro de 2026', { exact: false })).toBeVisible();
   await expect(notices.getByText('2 combinações sem par · 1 só no Siconfi e 1 só no CSV.')).toBeVisible();
   await expect(notices.getByText('Entre as combinações sem par, o saldo líquido é zero em 1 das que só constam no CSV e em 1 das que só constam no Siconfi.')).toBeVisible();
-  await expect(notices.getByText('Sem referência na API')).toBeVisible();
-  await expect(notices.getByText(/não retornou registros para o saldo de novembro de 2026/)).toBeVisible();
+  await expect(notices.getByRole('heading', { level: 4 })).toHaveText('Saldo inicial × saldo final do mês anterior');
 
   await page.emulateMedia({ media: 'print' });
   await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
@@ -287,14 +283,13 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   await noticesTab.press('Home');
   await expect(resultTab).toBeFocused();
   await expect(result).toBeVisible();
-  await expect(result.getByText('Divergência confirmada')).toHaveCount(0);
-  await expect(result.getByText(/Diferença de R\$ 1 \(CSV menos Siconfi\)/)).toHaveCount(0);
+  await expect(result.getByRole('table', { name: 'Avisos da comparação entre competências' })).toHaveCount(0);
 });
 
 test('não sinaliza atenção quando há somente ausência de referência na API', async ({ page, context, baseURL }) => {
   await mockSiconfi(context, baseURL, () => []);
   await page.goto('/');
-  await selectFile(page, '2914604EX', '2026-01', balances, 'msc-sintetica.csv');
+  await selectFile(page, '2914604EX', '2026-02', balances, 'msc-sintetica.csv');
   await page.getByRole('button', { name: 'Validar', exact: true }).click();
 
   const noticesTab = page.getByRole('tab', { name: 'Avisos' });
@@ -314,9 +309,9 @@ test('trata HTTP 503 como comparação inconclusiva apenas em Avisos', async ({ 
 
   await page.getByRole('tab', { name: 'Avisos' }).click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
-  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(2, { timeout: 25_000 });
-  await expect(notices.getByText('O Siconfi respondeu com erro HTTP 503.', { exact: true })).toHaveCount(2);
-  await expect(notices.getByText('Divergência confirmada')).toHaveCount(0);
+  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(1, { timeout: 15_000 });
+  await expect(notices.getByText('O Siconfi respondeu com erro HTTP 503.', { exact: true })).toHaveCount(1);
+  await expect(notices.getByRole('table', { name: 'Avisos da comparação entre competências' })).toHaveCount(0);
 
   await page.getByRole('tab', { name: 'Resultado' }).click();
   const result = page.getByRole('tabpanel', { name: 'Resultado' });
@@ -370,7 +365,7 @@ test('cancela a consulta Siconfi do CSV substituído e descarta a resposta tardi
   await page.getByRole('tab', { name: 'Avisos' }).click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
   await expect(notices.getByText(/Disponível para arquivos mensais de 2026 de municípios baianos/)).toBeVisible();
-  await expect(notices.getByText(/Divergência confirmada|setembro de 2026|A comparação com o Siconfi está em andamento/)).toHaveCount(0);
+  await expect(notices.getByText(/setembro de 2026|A comparação com o Siconfi está em andamento/)).toHaveCount(0);
   expect(calls).toEqual(['2914604']);
 });
 
@@ -393,7 +388,7 @@ test('prepara todos os erros para impressão, exclui Avisos e restaura aba e pá
   await expect(pagination).toContainText('Página 2 de 2');
   await expect(errorLabels).toHaveText(expectedErrors.slice(50));
   await noticesTab.click();
-  const divergence = page.getByText('Divergência confirmada', { exact: true });
+  const divergence = page.getByRole('table', { name: 'Avisos da comparação entre competências', includeHidden: true });
   await expect(divergence).toBeVisible({ timeout: 20_000 });
 
   await page.emulateMedia({ media: 'print' });
@@ -423,13 +418,13 @@ test('mantém divergências confiáveis em Avisos quando outro saldo tem NR inv�
   const validAccount = '211110101';
   const nr = '00000001';
   const csvWithNr = (account, value, revenueCode) =>
-    [account, powerCode, 'PO', revenueCode, 'NR', ...Array(8).fill(''), value, 'ending_balance', 'D'].join(';');
+    [account, powerCode, 'PO', revenueCode, 'NR', ...Array(8).fill(''), value, 'beginning_balance', 'D'].join(';');
   await mockSiconfi(context, baseURL, filters => {
     const month = Number(filters.get('me_referencia'));
     const accountClass = Number(filters.get('classe_conta'));
-    if (month !== 11) return [];
+    if (month !== 9) return [];
     const common = { cod_ibge: 2914604, exercicio: 2026, mes_referencia: month, classe_conta: accountClass,
-      tipo_matriz: 'MSCC', tipo_valor: 'beginning_balance', poder_orgao: powerCode, natureza_conta: 'D' };
+      tipo_matriz: 'MSCC', tipo_valor: 'ending_balance', poder_orgao: powerCode, natureza_conta: 'D' };
     if (accountClass === 2) return [{ ...common, conta_contabil: validAccount, valor: 8 }];
     if (accountClass === 6) return [
       { ...common, conta_contabil: accountWithInvalidNr, natureza_receita: nr, valor: 50 },
@@ -440,7 +435,7 @@ test('mantém divergências confiáveis em Avisos quando outro saldo tem NR inv�
   await validateFile(page, '2914604EX', [
     csvWithNr(accountWithInvalidNr, '20', 'ERRO'),
     csvWithNr(relatedAccount, '13', nr),
-    row(validAccount, '10', 'ending_balance', 'D'),
+    row(validAccount, '10', 'beginning_balance', 'D'),
   ]);
 
   const result = page.getByRole('tabpanel', { name: 'Resultado' });
@@ -448,21 +443,26 @@ test('mantém divergências confiáveis em Avisos quando outro saldo tem NR inv�
   await expect(finding).toHaveCount(1);
   await expect(finding).toContainText('Linha 3');
   await expect(finding).toContainText(accountWithInvalidNr);
-  await expect(result.getByText('Divergência confirmada')).toHaveCount(0);
+  await expect(result.getByRole('table', { name: 'Avisos da comparação entre competências' })).toHaveCount(0);
 
   await page.getByRole('tab', { name: 'Avisos' }).click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
   await expect(notices.getByText('Parcial', { exact: true })).toBeVisible({ timeout: 25_000 });
   await expect(notices.getByText('Há combinações excluídas por dados inválidos no CSV.')).toBeVisible();
-  const differences = notices.getByRole('row', { name: /Divergência confirmada/ });
+  const differences = notices.getByRole('table').locator('tbody').getByRole('row');
   await expect(differences).toHaveCount(2);
-  await expect(differences.filter({ hasText: validAccount })).toContainText('Diferença de R$ 2');
-  await expect(differences.filter({ hasText: relatedAccount })).toContainText('Diferença de R$ 1');
+  const validCells = differences.filter({ hasText: validAccount }).getByRole('cell');
+  const relatedCells = differences.filter({ hasText: relatedAccount }).getByRole('cell');
+  await expect(validCells.nth(1)).toHaveText('R$ 8,00 (D)');
+  await expect(validCells.nth(2)).toHaveText('R$ 10,00 (D)');
+  await expect(relatedCells.first().locator('div')).toHaveText('NR ' + nr + ' · PO ' + powerCode);
+  await expect(relatedCells.nth(1)).toHaveText('R$ 12,00 (D)');
+  await expect(relatedCells.nth(2)).toHaveText('R$ 13,00 (D)');
   await expect(notices.getByText(accountWithInvalidNr, { exact: false })).toHaveCount(0);
   await expect(notices.getByText(/^\d+ combinações sem par · \d+ só no Siconfi e \d+ só no CSV\.$/)).toHaveCount(0);
 });
 
-test('informa que a comparação está indisponível quando o CSV bloqueia as duas direções', async ({ page, context, baseURL }) => {
+test('informa que a comparação está indisponível quando o CSV tem tipo de saldo desconhecido', async ({ page, context, baseURL }) => {
   const calls = [];
   await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
   await validateFile(page, '2914604EX', [row(debitAccount, '1', 'desconhecido', 'D')]);
@@ -470,49 +470,44 @@ test('informa que a comparação está indisponível quando o CSV bloqueia as du
   await page.getByRole('tab', { name: 'Avisos' }).click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
   await expect(notices.getByRole('status')).toHaveText('Comparação indisponível devido a dados inválidos ou incompletos no CSV.');
-  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(2);
+  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(1);
   expect(calls).toHaveLength(0);
 });
 
-for (const [period, type, referenceMonth] of [
-  ['2026-01', 'ending_balance', 'fevereiro de 2026'],
-  ['2026-12', 'beginning_balance', 'novembro de 2026'],
+for (const [period, message] of [
+  ['2026-01', 'Não aplicável'],
+  ['2026-13', 'Não aplicável ao encerramento 2026-13.'],
 ]) {
-  test(`não anuncia comparação concluída quando o CSV bloqueia a única direção aplicável em ${period}`, async ({ page, context, baseURL }) => {
+  test(`não consulta o Siconfi para ${period}`, async ({ page, context, baseURL }) => {
     const calls = [];
     await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
     await page.goto('/');
-    await selectFile(page, '2914604EX', period, [row('699999999', '1', type, 'D')], 'msc-sintetica.csv');
+    await selectFile(page, '2914604EX', period, balances, 'msc-sintetica.csv');
     await page.getByRole('button', { name: 'Validar', exact: true }).click();
 
     await page.getByRole('tab', { name: 'Avisos' }).click();
     const notices = page.getByRole('tabpanel', { name: 'Avisos' });
-    await expect(notices.getByRole('status')).toHaveText('Confira o resultado de cada direção.');
-    await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(1);
-    await expect(notices.getByText('Não aplicável', { exact: true })).toHaveCount(1);
-    await expect(notices.getByText('Referência ' + referenceMonth, { exact: false })).toBeVisible();
+    await expect(notices.getByText(message, { exact: true })).toBeVisible();
     expect(calls).toHaveLength(0);
   });
 }
 
-test('mostra avisos com zero inferido automaticamente e preserva apenas a direção concluída ao cancelar', async ({ page, context, baseURL }) => {
+test('mostra avisos com zero inferido, agrupa espelhos e reinicia a paginação ao revalidar', async ({ page, context, baseURL }) => {
   const calls = [];
   const localOnly = '111110602';
   const pairedAccount = '111110603';
   const ambiguousAccount = '111110604';
   const oppositeSigns = '111110701';
   const twoDifferentDimensions = '111111900';
-  const releasePosterior = Promise.withResolvers();
   await routeSiconfi(context, baseURL, async (route, filters) => {
     const month = Number(filters.get('me_referencia'));
     const accountClass = Number(filters.get('classe_conta'));
     calls.push([month, accountClass]);
-    if (month === 11) await releasePosterior.promise;
     if (accountClass !== 1) return fulfillSiconfi(route, baseURL, []);
     const common = { cod_ibge: 2914604, exercicio: 2026, mes_referencia: month, classe_conta: 1,
       tipo_matriz: 'MSCC', tipo_valor: filters.get('id_tv'), poder_orgao: powerCode, natureza_conta: 'D' };
     return fulfillSiconfi(route, baseURL, [
-      { ...common, conta_contabil: debitAccount, valor: 100 },
+      { ...common, conta_contabil: debitAccount, valor: 99 },
       { ...common, conta_contabil: creditAccount, valor: 2.5 },
       { ...common, conta_contabil: pairedAccount, valor: 4, natureza_conta: 'C' },
       { ...common, conta_contabil: ambiguousAccount, valor: 6, fonte_recursos: '1501' },
@@ -533,45 +528,33 @@ test('mostra avisos com zero inferido automaticamente e preserva apenas a direç
   const noticesTab = page.getByRole('tab', { name: 'Avisos' });
   await noticesTab.click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
-  const table = notices.getByRole('table', { name: 'Avisos com saldo zero inferido pelo Validador' });
-  const pagination = notices.getByRole('navigation', { name: 'Paginação dos avisos com zero inferido para setembro de 2026' });
-  try {
-    await expect(notices.getByRole('checkbox')).toHaveCount(0);
-    await expect(notices.getByText('60 combinações sem par · 55 só no Siconfi e 5 só no CSV.')).toBeVisible({ timeout: 20_000 });
-    await expect(notices.getByText('Total de avisos com zero inferido 60 · Exibidos em 59 linhas')).toBeVisible();
-    const csv = table.getByRole('row', { name: new RegExp(localOnly) });
-    const api = table.getByRole('row', { name: new RegExp(creditAccount) });
-    await expect(csv.getByRole('cell')).toHaveText([localOnly + ' · PO ' + powerCode, 'R$ 3 · CSV', 'R$ 0 inferido pelo Validador (chave ausente no Siconfi)', 'R$ 3']);
-    await expect(api.getByRole('cell')).toHaveText([creditAccount + ' · PO ' + powerCode, 'R$ 2,5 · Siconfi', 'R$ 0 inferido pelo Validador (chave ausente no CSV)', 'R$ −2,5']);
-    const paired = table.getByRole('row').filter({ hasText: pairedAccount });
-    await expect(paired).toHaveCount(1);
-    await expect(paired).toContainText('Conta ' + pairedAccount);
-    await expect(paired).toContainText('CSV: FR 1500 · PO 10131');
-    await expect(paired).toContainText('Siconfi: PO 10131 · FR ausente');
-    await expect(paired).toContainText('Inicial no CSV de outubro de 2026: R$ −4 (C)');
-    await expect(paired).toContainText('Final no Siconfi de setembro de 2026: R$ −4 (C)');
-    await expect(paired).toContainText('Chave do CSV: R$ 0 inferido pelo Validador no Siconfi');
-    await expect(paired).toContainText('Chave do Siconfi: R$ 0 inferido pelo Validador no CSV');
-    await expect(table.getByRole('row').filter({ hasText: ambiguousAccount })).toHaveCount(3);
-    await expect(table.getByRole('row').filter({ hasText: oppositeSigns })).toHaveCount(2);
-    await expect(table.getByRole('row').filter({ hasText: twoDifferentDimensions })).toHaveCount(2);
-    await expect(notices.getByText('Inconclusiva', { exact: true })).toBeVisible();
-    await expect(notices.getByText('Divergência confirmada')).toHaveCount(0);
-    await pagination.getByRole('button', { name: 'Próxima' }).click();
-    await expect(pagination).toContainText('Página 2');
-
-    await expect.poll(() => calls.at(-1)).toEqual([11, 1]);
-    await notices.getByRole('button', { name: 'Cancelar comparação' }).click();
-    await expect(notices.getByRole('status')).toHaveText('Comparação cancelada.');
-    await expect(pagination).toContainText('Página 1');
-    await expect(table).toHaveCount(1);
-    await expect(csv).toBeVisible();
-    expect(calls).toHaveLength(9);
-  } finally {
-    releasePosterior.resolve();
-  }
-  await expect(notices.getByText('A consulta foi cancelada antes de concluir esta direção.')).toBeVisible();
-  await expect(table).toHaveCount(1);
+  const table = notices.getByRole('table', { name: 'Avisos da comparação entre competências' });
+  const pagination = notices.getByRole('navigation', { name: 'Paginação da comparação com a competência setembro de 2026' });
+  await expect(notices.getByRole('checkbox')).toHaveCount(0);
+  await expect(notices.getByText('60 combinações sem par · 55 só no Siconfi e 5 só no CSV.')).toBeVisible({ timeout: 20_000 });
+  await expect(notices.getByText('Total de avisos com zero inferido 60 · Exibidos em 59 linhas')).toBeVisible();
+  const csv = table.getByRole('row', { name: new RegExp(localOnly) });
+  const api = table.getByRole('row', { name: new RegExp(creditAccount) });
+  await expect(csv.getByRole('cell').nth(1)).toHaveText('R$ 0,00 inferido');
+  await expect(csv.getByRole('cell').nth(2)).toHaveText('R$ 3,00 (D)');
+  await expect(api.getByRole('cell').nth(1)).toHaveText('R$ 2,50 (D)');
+  await expect(api.getByRole('cell').nth(2)).toHaveText('R$ 0,00 inferido');
+  const paired = table.getByRole('row').filter({ hasText: pairedAccount });
+  await expect(paired).toHaveCount(1);
+  await expect(paired.getByRole('cell').first().locator('div')).toHaveText('FR 1500 · PO ' + powerCode);
+  await expect(paired.getByRole('cell').nth(1)).toHaveText('R$ 0,00 inferido');
+  await expect(paired.getByRole('cell').nth(2)).toHaveText('R$ 4,00 (C)');
+  await expect(table.getByRole('row').filter({ hasText: ambiguousAccount })).toHaveCount(3);
+  await expect(table.getByRole('row').filter({ hasText: oppositeSigns })).toHaveCount(2);
+  await expect(table.getByRole('row').filter({ hasText: twoDifferentDimensions })).toHaveCount(2);
+  await expect(notices.getByText('Inconclusiva', { exact: true })).toBeVisible();
+  await expect(notices.getByText('Total de avisos de divergência 1', { exact: true })).toBeVisible();
+  await expect(table.locator('tbody').getByRole('row')).toHaveCount(50);
+  await expect(table.locator('tbody').getByRole('row').first().locator('strong')).toHaveText(debitAccount);
+  await pagination.getByRole('button', { name: 'Próxima' }).click();
+  await expect(pagination).toContainText('Página 2 de 2');
+  await expect(table.locator('tbody').getByRole('row')).toHaveCount(10);
+  expect(calls).toEqual(Array.from({ length: 8 }, (_, index) => [9, index + 1]));
 
   await page.emulateMedia({ media: 'print' });
   await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
@@ -582,6 +565,8 @@ test('mostra avisos com zero inferido automaticamente e preserva apenas a direç
   await validate.click();
   await noticesTab.click();
   await expect(table).toHaveCount(0);
+  await expect(pagination).toContainText('Página 1', { timeout: 20_000 });
+  await expect(csv).toBeVisible();
 
   await selectFile(page, '2914604EX', '2026-12', rows, 'msc-substituta.csv');
   await validate.click();
