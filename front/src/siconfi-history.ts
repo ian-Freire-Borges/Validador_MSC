@@ -144,12 +144,14 @@ function validateNext(href: string, current: URL, expected: URL): void {
   } catch {
     return contractError();
   }
+  const omittedLimit = !link.searchParams.has('limit');
   if (!linkOrigins.has(link.origin) || link.username || link.password || link.hash ||
       link.pathname !== expected.pathname ||
-      link.searchParams.size !== expected.searchParams.size) {
+      link.searchParams.size !== expected.searchParams.size - Number(omittedLimit)) {
     return contractError();
   }
   expected.searchParams.forEach((value, name) => {
+    if (name === 'limit' && omittedLimit) return;
     const values = link.searchParams.getAll(name);
     if (values.length !== 1 || values[0] !== value) return contractError();
   });

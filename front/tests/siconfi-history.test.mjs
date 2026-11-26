@@ -53,12 +53,19 @@ test('aceita metadados de continuação observados e impede alteração de desti
   continuation.hostname = 'host-5hrds-scan.prosubnet.vcndados.oraclevcn.com';
   const paginated = { ...envelope, limit: 1, hasMore: true, links: [{ rel: 'next', href: continuation.href }] };
   assert.equal(parsePage(JSON.stringify(paginated), filters, 0, 1).nextOffset, 1);
+  const withoutLimit = new URL(continuation);
+  withoutLimit.searchParams.delete('limit');
+  assert.equal(parsePage(JSON.stringify({ ...paginated, links: [{ rel: 'next', href: withoutLimit.href }] }), filters, 0, 1).nextOffset, 1);
   for (const invalid of [
     continuation.href.replace(continuation.hostname, 'example.org'),
     continuation.href.replace('offset=1', 'offset=2'),
     continuation.href.replace('id_ente=17', 'id_ente=18'),
     continuation.href.replace('msc_patrimonial', 'msc_controle'),
     continuation.href + '&limit=1',
+    continuation.href.replace('limit=1', 'limit=2'),
+    withoutLimit.href.replace('co_tipo_matriz=MSCC&', ''),
+    withoutLimit.href + '&irregular=1',
+    withoutLimit.href + '&offset=1',
   ]) {
     const result = { ...paginated, links: [{ rel: 'next', href: invalid }] };
     assert.throws(() => parsePage(JSON.stringify(result), filters, 0, 1), /formato inesperado/);
@@ -71,6 +78,26 @@ test('aceita metadados de continuação observados e impede alteração de desti
   ]) {
     assert.throws(() => parsePage(JSON.stringify(invalid), filters, 0, pageLimit), /formato inesperado/);
   }
+});
+
+test('reconstrói a URL da próxima página no domínio público com o limite original', async t => {
+  const continuation = pageUrl(filters, 1, 1);
+  continuation.hostname = 'host-5hrds-scan.prosubnet.vcndados.oraclevcn.com';
+  continuation.searchParams.delete('limit');
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    requests.push(url.href);
+    const first = requests.length === 1;
+    const body = { ...envelope, limit: 1, offset: first ? 0 : 1, hasMore: first,
+      links: first ? [{ rel: 'next', href: continuation.href }] : [] };
+    return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+  });
+  const service = new HistoryService();
+  const { signal } = new AbortController();
+  const first = await service.load(filters, 0, signal, 1);
+  assert.equal(first.nextOffset, 1);
+  assert.equal((await service.load(filters, first.nextOffset, signal, 1)).nextOffset, null);
+  assert.deepEqual(requests, [pageUrl(filters, 0, 1).href, pageUrl(filters, 1, 1).href]);
 });
 
 test('valida os tipos e inteiros de origem antes de formatar os registros', () => {
