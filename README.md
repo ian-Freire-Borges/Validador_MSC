@@ -12,7 +12,7 @@ npm.cmd ci --no-audit --no-fund
 npm.cmd start
 ```
 
-Abra http://127.0.0.1:4200. Selecione um CSV em UTF-8 e acione **Validar**. Se houver falha na leitura, reexporte o CSV em UTF-8 e valide novamente. A validação executa em um Web Worker que pode ser encerrado pelo botão **Cancelar validação**. A troca do arquivo limpa o relatório anterior. O arquivo é processado na memória do navegador, sem transmissão e sem armazenamento pelo aplicativo. Para arquivos elegíveis de municípios baianos de 2026, a aba **Avisos** compara o saldo inicial do CSV com o saldo final do mês anterior consultado no Siconfi. A comparação é aplicável de fevereiro a dezembro.
+Abra http://127.0.0.1:4200. Selecione um CSV em UTF-8 e acione **Validar**. Se houver falha na leitura, reexporte o CSV em UTF-8 e valide novamente. A validação executa em um Web Worker que pode ser encerrado pelo botão **Cancelar validação**. A troca do arquivo limpa o relatório anterior. O arquivo é processado na memória do navegador, sem transmissão e sem armazenamento pelo aplicativo. Para arquivos mensais elegíveis de municípios baianos de 2026, a aba **Avisos** compara o saldo inicial do CSV com o saldo final do mês anterior e o saldo final do CSV com o saldo inicial do mês seguinte, quando a referência está disponível no Siconfi. Janeiro consulta somente fevereiro, dezembro consulta somente novembro e o encerramento 2026-13 fica fora dessa comparação.
 
 Angular CLI e builder 22.0.9, Angular 22.0.8 e TypeScript 6.0.3 estão fixados no lockfile. A [matriz oficial](https://angular.dev/reference/versions) inclui Node.js 24.18 para essa combinação.
 

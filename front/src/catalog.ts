@@ -16,7 +16,7 @@ export const rules = {
   E06: ['Formato do valor', 'V p. 4(g), 6(g); I p. 12; II Observações!A5'],
   E07: ['Tipo do valor', 'V p. 4(h); I p. 12; II Observações!A6:A9'],
   E08: ['Natureza do valor', 'V p. 4(i); I p. 13; II Observações!A10'],
-  E09: ['Presença de valor', 'V p. 6(h); política local para zero'],
+  E09: ['Presença de valor', 'V p. 6(h); comunicado do Siconfi sobre validações de carregamento, 18/09/2023'],
   E10: ['Preenchimento de pares IC/TIPO', 'V p. 4(j); I p. 5'],
   C01: ['Conta contábil elegível', 'V p. 4(a); I p. 6; II Leiaute MSC!A5:A6123 e PcaspEstendido2026!H/L/M'],
   C02: ['Tipo de IC conhecido', 'V p. 5(b); I p. 11–12; II Informações Complementares!B6:B14'],
@@ -32,16 +32,10 @@ export const rules = {
   C13: ['Domínio FS', 'I p. 10 e 11; II FS!A3:B123; MCASP 11ª ed., p. 74, § 4.2.2.2'],
 } as const;
 
-export const advisoryRules = {
-  C12: ['Conferência da codificação de ND', 'II ND 2026!A3 e F8:F1242'],
-  C13: ['Conferência do cruzamento de FS', 'II FS!A115:B123; MCASP 11ª ed., p. 74, § 4.2.2.2'],
-  C14: ['Conferência do ano de inscrição de restos a pagar', 'I p. 11–12; II Informações Complementares!B14:F14'],
-} as const;
-
 export const widths = { PO: 5, FP: 1, DC: 1, FR: 4, CO: 4, NR: 8, ND: 8, FS: 5, AI: 4 };
 export const valueTypes = ['beginning_balance', 'period_change', 'ending_balance'];
 export const natures = ['D', 'C'];
-const approvedVersion = '2026-f05e9a2685d59fd10351b0a7270661241eec5a652e3cba19003393e1581e9443';
+const approvedVersion = '2026-97657a771a434881028e7dcdbc79f9f3277027c48de2dfd21205dfd99d1d48a0';
 
 export interface Catalog {
   version: string;
@@ -68,7 +62,7 @@ export function compatibleCatalog(value: unknown): value is Catalog {
   const catalog = value as Catalog;
   if (
     catalog.version !== approvedVersion || catalog.year !== 2026 ||
-    catalog.rulesVersion !== 'ARQ-MVP-001-ACEITE+E02+C09–C14' ||
+    catalog.rulesVersion !== 'ARQ-MVP-001-ACEITE+E02+C09+C10+C11+C13' ||
     !['I', 'II', 'V', 'T', 'S'].every(key => {
       const source = catalog.sources?.[key];
       return source?.path && source.edition && source.region && /^[a-f0-9]{64}$/.test(source.sha256);
@@ -78,13 +72,12 @@ export function compatibleCatalog(value: unknown): value is Catalog {
     !catalog.widths || Object.keys(catalog.widths).length !== Object.keys(widths).length ||
     !Object.entries(widths).every(([kind, width]) => catalog.widths[kind] === width) ||
     !sameList(catalog.domains?.['FP'], ['1', '2']) || !sameList(catalog.domains?.['DC'], ['1']) ||
-    !catalog.domains || Object.keys(catalog.domains).length !== 10 ||
+    !catalog.domains || Object.keys(catalog.domains).length !== 9 ||
     !validList(catalog.domains['PO'], 92, code => /^[0-9]{5}$/.test(code)) ||
     !validList(catalog.domains['FR'], 294, code => /^[129][5-9][0-9]{2}$/.test(code)) ||
     !validList(catalog.domains['CO'], 52, code => /^[0-9]{4}$/.test(code)) ||
     !validList(catalog.domains['NR'], 4504, code => /^[0-9]{8}$/.test(code)) ||
     !validList(catalog.domains['NRNonValued'], 948, code => /^[0-9]{8}$/.test(code)) ||
-    !validList(catalog.domains['ND'], 1235, code => /^[0-9]{8}$/.test(code)) ||
     !validList(catalog.domains['FSFunction'], 29, code => /^[0-9]{2}$/.test(code)) ||
     !validList(catalog.domains['FSSubfunction'], 117, code => /^[0-9]{3}$/.test(code))
   ) return false;

@@ -8,7 +8,6 @@ export const balanceRules = {
   'SAL-EQU-01': ['Equilíbrio por natureza da informação', 'Regras de Validação da MSC 2026, revisão 24/11/2025, pp. 5–6, alínea e; Anexo I MSC 2026, p. 17'],
 } as const;
 export const balanceSpecification = 'ARQ-MVP-1.1-ACEITE com ressalva aprovada';
-export const valueTypeLabels = ['Saldo inicial', 'Movimentação', 'Saldo final'];
 const natureLabels = ['Patrimonial (classes 1–4)', 'Orçamentária (classes 5–6)', 'Controle (classes 7–8)'];
 type BalanceRuleId = keyof typeof balanceRules;
 type Pair = [type: string, code: string];
@@ -31,24 +30,15 @@ export interface BalanceGroup {
   lines: Sample<number>;
   blocks: BalanceBlock[];
 }
-export interface BalanceNotice {
-  id: 'SAL-EQU-TIPO' | 'SAL-CONS-REP';
-  group: string;
-  type?: string;
-  totals: Totals;
-  lines: Sample<number>;
-}
-
 interface Accumulation {
   lines: Sample<number>;
   block?: BalanceBlock;
 }
 interface Combination extends Accumulation {
   net: Decimal[];
-  occurrences: Map<string, number | Sample<number>>;
 }
-interface Partition extends Accumulation { debit: Decimal; credit: Decimal }
-const partition = (): Partition => ({ lines: sample(), debit: zero, credit: zero });
+interface Partition { debit: Decimal; credit: Decimal; block?: BalanceBlock }
+const partition = (): Partition => ({ debit: zero, credit: zero });
 
 function recordBlock(current: BalanceBlock | undefined, reason: BlockReason, origins: BalanceOrigin[]): BalanceBlock {
   const block = current ?? { reason, origins: sample<BalanceOrigin>() };
@@ -99,7 +89,6 @@ export class Balances {
       for (const target of affected) target.block = recordBlock(target.block, 'dados-saldo', valueFaults);
     } else {
       const target = nature.types[type];
-      remember(target.lines, line);
       if (side === 'D') target.debit = add(target.debit, amount);
       else target.credit = add(target.credit, amount);
     }
@@ -113,29 +102,23 @@ export class Balances {
     let combinations = this.combinations.get(account);
     if (!combinations) this.combinations.set(account, combinations = new Map());
     let group = combinations.get(key);
-    if (!group) combinations.set(key, group = { net: valueTypes.map(() => zero), lines: sample(), occurrences: new Map() });
+    if (!group) combinations.set(key, group = { net: valueTypes.map(() => zero), lines: sample() });
     remember(group.lines, line);
     if (amount === null) {
       group.block = recordBlock(group.block, 'dados-saldo', valueFaults);
       return;
     }
     group.net[type] = add(group.net[type], side === 'D' ? amount : negate(amount));
-    const signature = type + '/' + side + '/' + amount.units + '/' + amount.scale;
-    const occurrences = group.occurrences.get(signature);
-    if (occurrences === undefined) group.occurrences.set(signature, line);
-    else if (typeof occurrences === 'number') group.occurrences.set(signature, { count: 2, items: [occurrences, line] });
-    else remember(occurrences, line);
   }
 
-  finish(): { groups: BalanceGroup[]; notices: BalanceNotice[] } {
+  finish(): { groups: BalanceGroup[] } {
     const groups: BalanceGroup[] = [];
-    const notices: BalanceNotice[] = [];
     if (this.fileBlocks.size) {
       const blocks = [...this.fileBlocks.values()];
       for (const id of Object.keys(balanceRules) as BalanceRuleId[]) {
         groups.push({ id, group: 'Arquivo', state: 'Bloqueada', totals: [], blocks, lines: sample() });
       }
-      return { groups, notices };
+      return { groups };
     }
 
     const accounts = new Set([...this.combinations.keys(), ...this.uncertainAccounts.keys()]);
@@ -147,7 +130,7 @@ export class Balances {
         continue;
       }
       for (const key of [...combinations.keys()].sort()) {
-        const { net, lines, block, occurrences } = combinations.get(key)!;
+        const { net, lines, block } = combinations.get(key)!;
         const group = account + ' · ' + key;
         const blocks = [accountBlock, block].filter(item => item !== undefined);
         groups.push(balanceGroup('SAL-CONS-01', group, lines, blocks, () => {
@@ -160,27 +143,17 @@ export class Balances {
             { label: 'Diferença (informado − esperado)', value: format(difference) },
           ] };
         }));
-        const repeated = [...occurrences.keys()].filter(key => typeof occurrences.get(key) !== 'number').sort();
-        for (const signature of repeated) {
-          const lines = occurrences.get(signature);
-          if (lines && typeof lines !== 'number') notices.push({ id: 'SAL-CONS-REP', group, totals: [], lines });
-        }
       }
     }
 
     const equilibria = this.natures.map(({ types, lines }, index) => {
       const group = natureLabels[index];
       const blocks = types.flatMap((type, i) => type.block ? [{ ...type.block, type: valueTypes[i] }] : []);
-      types.forEach(({ block, debit, credit, lines }, i) => {
-        if (block || !lines.count) return;
-        const { difference, totals } = equilibriumTotals(debit, credit);
-        if (difference.units !== 0n) notices.push({ id: 'SAL-EQU-TIPO', group, type: valueTypes[i], totals, lines });
-      });
       return balanceGroup('SAL-EQU-01', group, lines, blocks, () => equilibriumTotals(
         types.reduce((total, type) => add(total, type.debit), zero),
         types.reduce((total, type) => add(total, type.credit), zero),
       ));
     });
-    return { groups: equilibria.concat(groups), notices };
+    return { groups: equilibria.concat(groups) };
   }
 }

@@ -1,5 +1,4 @@
 import { columns, compatibleCatalog, natures, rules, valueTypes } from './catalog.ts';
-import type { advisoryRules } from './catalog.ts';
 import { decodeLines, parseRecord } from './csv.ts';
 import { balanceOrigin, balanceRules, Balances } from './balances.ts';
 import type { BalanceOrigin } from './balances.ts';
@@ -36,13 +35,6 @@ interface Location {
   byteOffset?: number;
 }
 
-export interface LocalNotice extends Location {
-  id: keyof typeof advisoryRules;
-  accountCode: string;
-  observed: string;
-  guidance: string;
-}
-
 interface RuleCounts {
   passed: number;
   failed: number;
@@ -60,7 +52,6 @@ export interface ValidationResult {
   periodKind: 'Mensal' | 'Encerramento' | null;
   records: number;
   findings: Finding[];
-  localNotices: LocalNotice[];
   rules: Record<RuleId, RuleCounts & { state: RuleState }>;
   balances: ReturnType<Balances['finish']>;
   monthlyBalances: MonthlyBalances | null;
@@ -103,11 +94,8 @@ export function validate(
     ? candidate.version : null;
   const counts = Object.fromEntries(ruleIds.map(id => [id, { passed: 0, failed: 0, blocked: 0, reasons: {} }])) as Record<RuleId, RuleCounts>;
   const findings: Finding[] = [];
-  const localNotices: LocalNotice[] = [];
   const valuedRevenue = new Set(catalog?.domains.NR);
   const nonValuedRevenue = new Set(catalog?.domains.NRNonValued);
-  const publishedExpense = new Set(catalog?.domains.ND);
-  const publishedExpensePrefixes = new Set(catalog?.domains.ND.map(code => code.slice(0, 6)));
   const balances = new Balances();
   let institution: string | null = null;
   let institutionName: string | null = null;
@@ -121,6 +109,7 @@ export function validate(
   let metadataValid = false;
   let headerValid = false;
   let validValue = false;
+  let positiveValue = false;
   let monthly: { competence: Competence; collector: MonthlyBalanceCollector } | null = null;
 
   const check = (id: RuleId, ok: boolean, at: Location, observed: string, expected: string): boolean => {
@@ -231,8 +220,11 @@ export function validate(
       } else {
         const beforeValues = findings.length;
         const value = fields[13];
-        validValue = check('E06', /^[0-9]+(\.[0-9]+)?$/.test(value), location(lineCount, 14), value,
-          'Dígitos ASCII, com ponto decimal opcional seguido de dígitos') || validValue;
+        if (check('E06', /^[0-9]+(\.[0-9]+)?$/.test(value), location(lineCount, 14), value,
+          'Dígitos ASCII, com ponto decimal opcional seguido de dígitos')) {
+          validValue = true;
+          positiveValue ||= /[1-9]/.test(value);
+        }
         const typeIndex = valueTypes.indexOf(fields[14]);
         check('E07', typeIndex >= 0, location(lineCount, 15), fields[14], valueTypes.join(', '));
         check('E08', natures.includes(fields[15]), location(lineCount, 16), fields[15], natures.join(', '));
@@ -294,8 +286,6 @@ export function validate(
           else block('C04', 'conta');
           let inDomain = true;
           if (wide) {
-            const notice = (id: LocalNotice['id'], guidance: string) =>
-              localNotices.push({ id, ...icAt, accountCode: account, observed: ic, guidance });
             if (kind === 'NR') {
               if (valuedRevenue.has(ic)) {
                 check('C11', true, icAt, ic, '');
@@ -307,23 +297,9 @@ export function validate(
             } else if (kind === 'FS') {
               const functionCode = ic.slice(0, 2);
               const subfunctionCode = ic.slice(2);
-              const reserveMatch = (functionCode === '99') === (subfunctionCode === '997' || subfunctionCode === '999');
-              const specialChargesMatch = (functionCode === '28') === /^84[1-7]$/.test(subfunctionCode);
               inDomain = check('C13', catalog.domains.FSFunction.includes(functionCode) &&
                 catalog.domains.FSSubfunction.includes(subfunctionCode),
               icAt, ic, 'Use uma função e uma subfunção publicadas na aba FS do Anexo II.');
-              if (inDomain && (!reserveMatch || !specialChargesMatch)) {
-                notice('C13', [
-                  !reserveMatch ? 'Confira a classificação de reservas. As combinações de referência são 99997 e 99999.' : '',
-                  !specialChargesMatch ? 'Confira Encargos Especiais. A função 28 e as subfunções 841 a 847 devem ser usadas juntas.' : '',
-                ].filter(Boolean).join(' '));
-              }
-            } else if (kind === 'ND' && !publishedExpense.has(ic)) {
-              notice('C12', publishedExpensePrefixes.has(ic.slice(0, 6))
-                ? 'Os seis primeiros dígitos constam na referência de 2026. Confira o desdobramento informado e o mapeamento aplicado pelo ente.'
-                : 'O código completo e os seis primeiros dígitos estão ausentes da referência de 2026. Confira o mapeamento aplicado pelo ente.');
-            } else if (kind === 'AI' && (ic === '0000' || Number(ic) > catalog.year)) {
-              notice('C14', 'Confira o ano de inscrição de restos a pagar. O ano informado é zero ou posterior ao exercício da MSC.');
             } else if (domainId) {
               const expected = domainExpectations[kind] ?? catalog.domains[kind].join(', ');
               inDomain = check(domainId, catalog.domains[kind].includes(ic), icAt, ic, expected);
@@ -381,7 +357,19 @@ export function validate(
     if (reason) for (const id of contentRules) block(id, reason);
   }
 
-  if (validValue) check('E09', true, {}, '', 'Pelo menos um registro válido quanto ao valor');
+  if (validValue && periodKind === 'Mensal' && !positiveValue) {
+    if (readFault || !metadataValid || !headerValid) {
+      block('E09', readFault ? 'leitura-incompleta' : !metadataValid ? 'metadados' : 'guia');
+    } else if (counts.E05.failed || counts.E10.failed) {
+      block('E09', 'registro');
+    } else if (counts.E06.failed || counts.E07.failed || counts.E08.failed) {
+      block('E09', 'dados-saldo');
+    } else if (counts.E02.failed || counts.E02.blocked) {
+      block('E09', 'instituição');
+    } else {
+      check('E09', false, {}, 'Todos os valores dos registros são zero', 'Pelo menos um valor maior que zero na MSC mensal');
+    }
+  } else if (validValue) check('E09', true, {}, '', 'Pelo menos um registro válido quanto ao valor');
   else if (readFault || !metadataValid || !headerValid) {
     block('E09', readFault ? 'leitura-incompleta' : !metadataValid ? 'metadados' : 'guia');
   } else check('E09', false, {}, 'Nenhum valor decimal válido em registro com 16 campos', 'Pelo menos um valor válido no arquivo');
@@ -418,7 +406,7 @@ export function validate(
       'Sem pendências nas verificações executadas do MVP 1.1';
   return {
     catalogCompatible: Boolean(catalog), catalogVersion, institution, institutionName,
-    institutionStatus, period, periodKind, records, findings, localNotices, rules: results, summary, balances: balanceResults,
+    institutionStatus, period, periodKind, records, findings, rules: results, summary, balances: balanceResults,
     monthlyBalances: monthly?.collector.finish(monthly.competence) ?? null,
   };
 }

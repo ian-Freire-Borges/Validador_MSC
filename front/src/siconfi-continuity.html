@@ -1,20 +1,27 @@
-<section class="report-section" aria-labelledby="siconfi-continuity">
-  @if (!rows().length) {
-    <h3 id="siconfi-continuity">Avisos de saldos entre competências</h3>
+<section class="report-section" aria-label="Avisos de saldos entre competências">
+  @if (!hasRows()) {
+    <h3>Avisos de saldos entre competências</h3>
   }
   @if (balances()) {
-    @if (!rows().length) {
+    @if (!hasRows()) {
       <p class="report-reference">Os avisos de saldo entre competências têm caráter informativo. <a href="https://www.siconfi.tesouro.gov.br/siconfi/pages/public/conteudo/conteudo.jsf?id=54103">Comunicado do Tesouro Nacional</a>.</p>
     }
-    <p role="status" aria-live="polite" [class.sr-only]="rows().length">{{ status() }}</p>
-    @if (result(); as result) {
-      @if (rows().length) {
+    <p role="status" aria-live="polite" [class.sr-only]="hasRows()">{{ status() }}</p>
+    @for (comparison of comparisons(); track comparison.result.direction) {
+      @let result = comparison.result;
+      @let rows = comparison.rows;
+      @let previous = result.direction === 'anterior';
+      @let page = pages()[result.direction];
+      @let pageCount = comparison.pageCount;
+      @let first = (page - 1) * pageSize;
+      <section [attr.aria-label]="previous ? 'Comparação com o mês anterior' : 'Comparação com o mês seguinte'">
+      @if (rows.length) {
         <div class="continuity-summary">
-          <h3 id="siconfi-continuity">
+          <h3>
             <span class="continuity-summary-icon" aria-hidden="true">!</span>
-            {{ rows().length }} {{ rows().length === 1 ? 'aviso' : 'avisos' }} de saldo entre competências
+            {{ rows.length }} {{ rows.length === 1 ? 'aviso' : 'avisos' }} de saldo entre competências
           </h3>
-          <p class="continuity-summary-period"><span>{{ referenceMonth(result) }}</span> → <span>{{ currentMonth() }}</span></p>
+          <p class="continuity-summary-period"><span>{{ previous ? referenceMonth(result) : currentMonth() }}</span> → <span>{{ previous ? currentMonth() : referenceMonth(result) }}</span></p>
           @if (result.state === 'Parcial' || result.state === 'Inconclusiva') {
             <p class="continuity-summary-limitation">Comparação {{ result.state.toLowerCase() }}: {{ result.message }}</p>
           }
@@ -31,14 +38,14 @@
                 </tr>
               </thead>
               <tbody>
-                @for (row of visible(); track row.key) {
+                @for (row of rows.slice(first, first + pageSize); track row.key) {
                   <tr>
                     <td><span class="error-type error-type-content">Aviso</span></td>
                     <td>
                       <strong>Divergência de saldo entre competências</strong>
                       <div>Conta {{ row.key }}</div>
                       <div>
-                        Saldo inicial da MSC:
+                        {{ previous ? 'Saldo inicial da MSC:' : 'Saldo final da MSC:' }}
                         @if (row.local === null) {
                           R$ 0,00 <small class="report-inferred">inferido</small>
                         } @else {
@@ -46,7 +53,7 @@
                         }
                       </div>
                       <div>
-                        Saldo final da competência anterior no Siconfi:
+                        {{ previous ? 'Saldo final da competência anterior no Siconfi:' : 'Saldo inicial da competência seguinte no Siconfi:' }}
                         @if (row.official === null) {
                           R$ 0,00 <small class="report-inferred">inferido</small>
                         } @else {
@@ -65,11 +72,11 @@
           @if (result.inferredDifferences?.length) {
             <p>Total de avisos com zero inferido {{ result.inferredDifferences.length }}</p>
           }
-          @if (pageCount() > 1) {
+          @if (pageCount > 1) {
             <nav class="pagination" [attr.aria-label]="'Paginação da comparação com a competência ' + referenceMonth(result)">
-              <button type="button" class="secondary" (click)="movePage(-1)" [disabled]="page() === 1">Anterior</button>
-              <span aria-live="polite">Página {{ page() }} de {{ pageCount() }}</span>
-              <button type="button" class="secondary" (click)="movePage(1)" [disabled]="page() === pageCount()">Próxima</button>
+              <button type="button" class="secondary" (click)="movePage(result.direction, -1)" [disabled]="page === 1">Anterior</button>
+              <span aria-live="polite">Página {{ page }} de {{ pageCount }}</span>
+              <button type="button" class="secondary" (click)="movePage(result.direction, 1)" [disabled]="page === pageCount">Próxima</button>
             </nav>
           }
           <ng-container [ngTemplateOutlet]="pairDetails"></ng-container>
@@ -77,7 +84,7 @@
         </div>
       } @else {
         <section class="report-direction">
-          <h4>Saldo inicial × saldo final do mês anterior</h4>
+          <h4>{{ previous ? 'Saldo inicial × saldo final do mês anterior' : 'Saldo final × saldo inicial do mês seguinte' }}</h4>
           <p><strong class="report-state">{{ result.state }}</strong> @if (result.state !== 'Não aplicável' && result.state !== 'Sem referência na API') { · Referência {{ referenceMonth(result) }} }</p>
           @if (result.state === 'Sem referência na API') {
             <p>A consulta pública do Siconfi não retornou registros para o saldo de {{ referenceMonth(result) }}.</p>
@@ -100,6 +107,7 @@
           }
         }
       </ng-template>
+      </section>
     }
   } @else if (period() === '2026-13') {
     <p>Não aplicável ao encerramento 2026-13.</p>

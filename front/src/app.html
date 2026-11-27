@@ -203,39 +203,6 @@
       </div>
       <div id="avisos-painel" class="screen-only" role="tabpanel" aria-labelledby="avisos-aba" tabindex="0"
            [hidden]="activeReportTab() !== 'avisos'">
-        @if (localNotices().length) {
-          <section class="report-section" aria-labelledby="avisos-locais">
-            <h3 id="avisos-locais">Avisos locais do CSV ({{ localNotices().length }})</h3>
-            <p class="report-reference">Conferências informativas do arquivo, independentes da comparação com o Siconfi.</p>
-            <div class="table-scroll report-findings" role="region" aria-label="Detalhes dos avisos locais" tabindex="0">
-              <table class="error-table">
-                <caption class="sr-only">Avisos locais do CSV</caption>
-                <thead><tr><th scope="col">Tipo</th><th scope="col">Mensagem</th></tr></thead>
-                <tbody>
-                  @for (notice of visibleLocalNotices(); track $index) {
-                    <tr>
-                      <td><span class="error-type error-type-content">Aviso</span></td>
-                      <td class="finding-message">
-                        <strong class="finding-title">{{ localNoticeTitles[notice.id] }}</strong>
-                        <div>@if (notice.accountCode) { Conta: {{ notice.accountCode }} · } Linha: {{ notice.line }}</div>
-                        <div>Valor informado: <strong>{{ notice.observed }}</strong></div>
-                        <div>{{ notice.guidance }}</div>
-                        <small class="report-reference">Regra {{ notice.id }} · Campo {{ notice.fieldIndex }} · {{ notice.fieldName }} · Par {{ notice.pair }}</small>
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-            @if (localNoticePages() > 1) {
-              <nav aria-label="Paginação dos avisos locais" class="pagination">
-                <button type="button" class="secondary" (click)="localNoticePage.set(localNoticePage() - 1)" [disabled]="localNoticePage() === 1">Anterior</button>
-                <span aria-live="polite">Página {{ localNoticePage() }} de {{ localNoticePages() }}</span>
-                <button type="button" class="secondary" (click)="localNoticePage.set(localNoticePage() + 1)" [disabled]="localNoticePage() === localNoticePages()">Próxima</button>
-              </nav>
-            }
-          </section>
-        }
         <msc-siconfi-continuity [balances]="report.monthlyBalances" [period]="report.period" />
       </div>
     </section>

@@ -5,6 +5,7 @@ const siconfiOrigin = 'https://apidatalake.tesouro.gov.br';
 const debitAccount = '111110100';
 const creditAccount = '111110200';
 const powerCode = '10131';
+const workerAsset = /\/worker-[\w-]+\.js$/;
 
 function row(account, amount, type, side, fundingSource = null) {
   const information = [
@@ -53,6 +54,11 @@ function fulfillSiconfi(route, baseURL, items) {
 
 function mockSiconfi(context, baseURL, load) {
   return routeSiconfi(context, baseURL, (route, filters) => fulfillSiconfi(route, baseURL, load(filters)));
+}
+
+async function fulfillWorkerWithPrefix(route, prefix) {
+  const response = await route.fetch();
+  await route.fulfill({ response, body: prefix + '\n' + await response.text() });
 }
 
 const balances = [[debitAccount, 'D'], [creditAccount, 'C']].flatMap(([account, side]) => [
@@ -149,7 +155,7 @@ test('mostra CO fora do domínio de 2026 como erro de conteúdo localizado', asy
   await expect(result.getByRole('row').filter({ hasText: 'Regra C03' })).toHaveCount(0);
 });
 
-test('mostra somente avisos locais de ND, FS e AI sem reprovar o CSV ou consultar a API', async ({ page, context, baseURL }) => {
+test('ND, FS, AI e NR com desdobramento 999 não geram avisos locais', async ({ page, context, baseURL }) => {
   const calls = [];
   await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
   const withIc = (account, value, kind) => {
@@ -163,23 +169,18 @@ test('mostra somente avisos locais de ND, FS e AI sem reprovar o CSV ou consulta
     withIc('522110100', '31904601', 'ND'),
     withIc('531100000', '2027', 'AI'),
     withIc('522110100', '01846', 'FS'),
+    row(debitAccount, '1', 'period_change', 'D'),
+    row(debitAccount, '1', 'period_change', 'C'),
   ]);
   const result = page.getByRole('tabpanel', { name: 'Resultado' });
   await expect(result.getByText('Sem erros nas verificações executadas')).toBeVisible();
   await expect(result.getByRole('table')).toHaveCount(0);
   const tab = page.getByRole('tab', { name: 'Avisos' });
-  await expect(tab.getByText('!', { exact: true })).toBeVisible();
+  await expect(tab.getByText('!', { exact: true })).toHaveCount(0);
   await tab.click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
-  const local = notices.getByRole('table', { name: 'Avisos locais do CSV' });
-  await expect(local.getByRole('row').filter({ hasText: 'Regra C11' })).toHaveCount(0);
-  const nd = local.getByRole('row').filter({ hasText: 'Regra C12' });
-  await expect(nd).toContainText('Conta: 522110100 · Linha: 4');
-  await expect(nd).toContainText('Valor informado: 31904601');
-  await expect(nd).toContainText('Regra C12 · Campo 8 · IC4 · Par 4');
-  await expect(local.getByRole('row').filter({ hasText: 'Regra C14' })).toContainText('posterior');
-  await expect(local.getByRole('row').filter({ hasText: 'Regra C13' })).toContainText('Encargos Especiais');
-  await expect(notices.getByRole('heading', { name: 'Avisos de saldos entre competências' })).toBeVisible();
+  await expect(notices.getByRole('table')).toHaveCount(0);
+  await expect(notices.getByText(/Disponível para arquivos mensais de 2026 de municípios baianos/)).toBeVisible();
   expect(calls).toHaveLength(0);
 });
 
@@ -216,7 +217,6 @@ test('mostra consistência e equilíbrio patrimonial na aba Resultado', async ({
 
 test('cancela a validação local em andamento e permite validar novamente', async ({ page, context, baseURL }) => {
   await mockSiconfi(context, baseURL, () => []);
-  const workerAsset = /\/worker-[\w-]+\.js$/;
   const readBarrierChannel = 'msc-validation-read-barrier';
   let workerLoads = 0;
   await context.route(url => url.origin === baseURL && workerAsset.test(url.pathname), async route => {
@@ -224,8 +224,7 @@ test('cancela a validação local em andamento e permite validar novamente', asy
       await route.continue();
       return;
     }
-    const response = await route.fetch();
-    await route.fulfill({ response, body: `
+    await fulfillWorkerWithPrefix(route, `
       {
         const barrier = new BroadcastChannel(${JSON.stringify(readBarrierChannel)});
         const read = Blob.prototype.arrayBuffer;
@@ -237,8 +236,7 @@ test('cancela a validação local em andamento e permite validar novamente', asy
           return read.call(this);
         };
       }
-      ${await response.text()}
-    ` });
+    `);
   });
   await page.addInitScript(channelName => {
     const barrier = new BroadcastChannel(channelName);
@@ -280,6 +278,32 @@ test('cancela a validação local em andamento e permite validar novamente', asy
   await expect(report.getByText('Sem erros nas verificações executadas')).toBeVisible();
   await expect(report.getByText('3550308EX', { exact: true })).toBeVisible();
   expect(workerLoads).toBe(2);
+});
+
+test('recupera de uma falha inesperada do Worker ao validar novamente o mesmo CSV', async ({ page, context, baseURL }) => {
+  await mockSiconfi(context, baseURL, () => []);
+  await context.route(url => url.origin === baseURL && workerAsset.test(url.pathname), route =>
+    fulfillWorkerWithPrefix(route, `
+      globalThis.TextDecoder = class {
+        constructor() { throw new Error('Falha de decodificação simulada'); }
+      };
+    `), { times: 1 });
+
+  const validate = page.getByRole('button', { name: 'Validar', exact: true });
+  const status = page.getByRole('region', { name: 'Arquivo para validar' }).getByRole('status');
+  const report = page.getByRole('region', { name: 'Relatório de pré-validação' });
+  await validateFile(page, '3550308EX', balances);
+
+  await expect(status).toHaveText('Falha durante a validação. Selecione Validar para tentar de novo.');
+  await expect(page.getByRole('progressbar', { name: 'Progresso da validação' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Cancelar validação' })).toHaveCount(0);
+  await expect(report).toHaveCount(0);
+  await expect(validate).toBeEnabled();
+
+  await validate.click();
+  await expect(status).toHaveText('Pré-validação local concluída.');
+  await expect(report.getByText('Sem erros nas verificações executadas')).toBeVisible();
+  await expect(report.getByText('3550308EX', { exact: true })).toBeVisible();
 });
 
 test('consulta automaticamente e mantém a divergência do mês anterior apenas em Avisos', async ({ page, context, baseURL }) => {
@@ -329,6 +353,7 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
   await expect(noticesTab).toHaveAccessibleDescription('Há avisos que merecem atenção.');
   expect(calls.map(({ month, accountClass, valueType }) => [month, accountClass, valueType])).toEqual([
     ...Array.from({ length: 8 }, (_, index) => [9, index + 1, 'ending_balance']),
+    ...Array.from({ length: 8 }, (_, index) => [11, index + 1, 'beginning_balance']),
   ]);
 
   const table = notices.getByRole('table', { name: 'Avisos da comparação entre competências' });
@@ -367,7 +392,7 @@ test('consulta automaticamente e mantém a divergência do mês anterior apenas 
 test('não sinaliza atenção quando há somente ausência de referência na API', async ({ page, context, baseURL }) => {
   await mockSiconfi(context, baseURL, () => []);
   await page.goto('/');
-  await selectFile(page, '2914604EX', '2026-02', balances, 'msc-sintetica.csv');
+  await selectFile(page, '2914604EX', '2026-12', balances, 'msc-sintetica.csv');
   await page.getByRole('button', { name: 'Validar', exact: true }).click();
 
   const noticesTab = page.getByRole('tab', { name: 'Avisos' });
@@ -387,8 +412,8 @@ test('trata HTTP 503 como comparação inconclusiva apenas em Avisos', async ({ 
 
   await page.getByRole('tab', { name: 'Avisos' }).click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
-  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(1, { timeout: 15_000 });
-  await expect(notices.getByText('O Siconfi respondeu com erro HTTP 503.', { exact: true })).toHaveCount(1);
+  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(2, { timeout: 25_000 });
+  await expect(notices.getByText('O Siconfi respondeu com erro HTTP 503.', { exact: true })).toHaveCount(2);
   await expect(notices.getByRole('table', { name: 'Avisos da comparação entre competências' })).toHaveCount(0);
 
   await page.getByRole('tab', { name: 'Resultado' }).click();
@@ -557,12 +582,11 @@ test('informa que a comparação está indisponível quando o CSV tem tipo de sa
   await page.getByRole('tab', { name: 'Avisos' }).click();
   const notices = page.getByRole('tabpanel', { name: 'Avisos' });
   await expect(notices.getByRole('status')).toHaveText('Comparação indisponível devido a dados inválidos ou incompletos no CSV.');
-  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(1);
+  await expect(notices.getByText('Inconclusiva', { exact: true })).toHaveCount(2);
   expect(calls).toHaveLength(0);
 });
 
 for (const [period, message] of [
-  ['2026-01', 'Não aplicável'],
   ['2026-13', 'Não aplicável ao encerramento 2026-13.'],
 ]) {
   test(`não consulta o Siconfi para ${period}`, async ({ page, context, baseURL }) => {
@@ -579,6 +603,44 @@ for (const [period, message] of [
   });
 }
 
+test('imprime E09 em Resultado e mostra só a referência de fevereiro em Avisos para janeiro', async ({ page, context, baseURL }) => {
+  const calls = [];
+  await mockSiconfi(context, baseURL, filters => {
+    calls.push([filters.get('me_referencia'), filters.get('id_tv')]);
+    if (filters.get('classe_conta') !== '1') return [];
+    return [{ cod_ibge: 2914604, exercicio: 2026, mes_referencia: 2, classe_conta: 1,
+      tipo_matriz: 'MSCC', tipo_valor: 'beginning_balance', poder_orgao: powerCode,
+      conta_contabil: debitAccount, valor: 2, natureza_conta: 'D' }];
+  });
+  await page.goto('/');
+  await selectFile(page, '2914604EX', '2026-01', [row(debitAccount, '00.000', 'ending_balance', 'D')], 'msc-zerada.csv');
+  await page.getByRole('button', { name: 'Validar', exact: true }).click();
+
+  const result = page.getByRole('tabpanel', { name: 'Resultado' });
+  const finding = result.getByRole('row').filter({ hasText: 'Regra E09' });
+  await expect(finding).toHaveCount(1);
+  await expect(finding).toContainText('Todos os valores dos registros são zero');
+  await expect(finding).toContainText('Pelo menos um valor maior que zero na MSC mensal');
+  const resultTab = page.getByRole('tab', { name: 'Resultado' });
+  await resultTab.press('ArrowRight');
+  const notices = page.getByRole('tabpanel', { name: 'Avisos' });
+  const posterior = notices.getByRole('region', { name: 'Comparação com o mês seguinte' });
+  await expect(posterior.getByText('janeiro de 2026 → fevereiro de 2026')).toBeVisible({ timeout: 20_000 });
+  const warning = posterior.getByRole('row').filter({ hasText: debitAccount });
+  await expect(warning).toContainText('Saldo final da MSC: R$ 0,00');
+  await expect(warning).toContainText('Saldo inicial da competência seguinte no Siconfi: R$ 2,00 (D)');
+  await expect(notices.getByRole('region', { name: 'Comparação com o mês anterior' })).toHaveCount(0);
+  expect(calls).toEqual(Array.from({ length: 8 }, () => ['2', 'beginning_balance']));
+
+  await page.emulateMedia({ media: 'print' });
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+  await expect(finding).toBeVisible();
+  await expect(notices).toBeHidden();
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  await page.emulateMedia({ media: 'screen' });
+  await expect(warning).toBeVisible();
+});
+
 test('mostra cada aviso com zero inferido e reinicia a paginação ao revalidar', async ({ page, context, baseURL }) => {
   const calls = [];
   const localOnly = '111110602';
@@ -590,7 +652,7 @@ test('mostra cada aviso com zero inferido e reinicia a paginação ao revalidar'
     const month = Number(filters.get('me_referencia'));
     const accountClass = Number(filters.get('classe_conta'));
     calls.push([month, accountClass]);
-    if (accountClass !== 1) return fulfillSiconfi(route, baseURL, []);
+    if (month !== 9 || accountClass !== 1) return fulfillSiconfi(route, baseURL, []);
     const common = { cod_ibge: 2914604, exercicio: 2026, mes_referencia: month, classe_conta: 1,
       tipo_matriz: 'MSCC', tipo_valor: filters.get('id_tv'), poder_orgao: powerCode, natureza_conta: 'D' };
     return fulfillSiconfi(route, baseURL, [
@@ -645,7 +707,7 @@ test('mostra cada aviso com zero inferido e reinicia a paginação ao revalidar'
   await pagination.getByRole('button', { name: 'Próxima' }).click();
   await expect(pagination).toContainText('Página 2 de 2');
   await expect(table.locator('tbody').getByRole('row')).toHaveCount(11);
-  expect(calls).toEqual(Array.from({ length: 8 }, (_, index) => [9, index + 1]));
+  expect(calls.slice(0, 8)).toEqual(Array.from({ length: 8 }, (_, index) => [9, index + 1]));
 
   await page.emulateMedia({ media: 'print' });
   await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));

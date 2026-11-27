@@ -1,5 +1,5 @@
 import type { BalanceGroup } from './balances.ts';
-import type { LocalNotice, RuleId } from './validation.ts';
+import type { RuleId } from './validation.ts';
 
 const monthFormatter = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const balanceFormatter = new Intl.NumberFormat('pt-BR');
@@ -14,7 +14,7 @@ const findingTitles: Record<Exclude<RuleId, BalanceGroup['id']>, string> = {
   E06: 'O valor do registro não está no formato aceito.',
   E07: 'O tipo de valor não é reconhecido.',
   E08: 'A natureza do valor deve ser débito ou crédito.',
-  E09: 'O arquivo precisa ter pelo menos um registro com valor válido.',
+  E09: 'O arquivo precisa ter valores válidos e a MSC mensal precisa ter pelo menos um valor maior que zero.',
   E10: 'Falta preencher um campo do par de informação complementar.',
   C01: 'O código da conta não corresponde a uma conta elegível.',
   C02: 'O tipo de informação complementar não é reconhecido.',
@@ -28,12 +28,6 @@ const findingTitles: Record<Exclude<RuleId, BalanceGroup['id']>, string> = {
   C10: 'Código de Acompanhamento da Execução Orçamentária (CO) fora do domínio de 2026.',
   C11: 'Natureza da Receita (NR) fora do domínio de 2026.',
   C13: 'Função e Subfunção (FS) fora do domínio de 2026.',
-};
-
-export const localNoticeTitles: Record<LocalNotice['id'], string> = {
-  C12: 'Natureza da Despesa (ND) a conferir',
-  C13: 'Combinação de Função e Subfunção (FS) a conferir',
-  C14: 'Ano de Inscrição de Restos a Pagar (AI) a conferir',
 };
 
 export function findingTitle(id: RuleId): string {

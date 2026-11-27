@@ -53,9 +53,7 @@ test('Worker carrega o catálogo, publica progresso e retorna a validação', op
   assert.equal(result.findings.length, 0);
   assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
   assert.equal(result.rules['SAL-EQU-01'].state, 'Conforme');
-  assert.deepEqual(result.balances.notices.map(notice => [notice.id, notice.type, notice.totals.at(-1).value]), [
-    ['SAL-EQU-TIPO', 'beginning_balance', '10'], ['SAL-EQU-TIPO', 'period_change', '−10'],
-  ]);
+  assert.deepEqual(result.balances.groups.find(group => group.id === 'SAL-EQU-01').totals.map(total => total.value), ['10', '10', '0']);
 });
 
 test('Worker retorna erro de leitura quando o Blob rejeita arrayBuffer', options, async t => {

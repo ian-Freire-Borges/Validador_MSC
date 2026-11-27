@@ -17,7 +17,7 @@ FILES = {
         "2026-07-08",
         "Leiaute MSC!A3:P6123; PcaspEstendido2026!H/L/M/O/P; Conjunto de IC!A4:F12; "
         "Informações Complementares!B6:F14; PO!A6:B97; FR 2026!A7:B9 e A12:B121; CO 2026!A7:A68; "
-        "NR 2026!H6:K5457; ND 2026!F8:F1242; FS!A7:B123; Observações!A3:A10",
+        "NR 2026!H6:K5457; FS!A7:B123; Observações!A3:A10",
     ),
     "V": ("2026/2026_Regras_de_Validacao_MSC_24112025.pdf", "2025-11-24", "p. 2–7"),
     "T": ("2026/2026_Template_MSC_15012026.csv", "2026-01-15", "linhas 1–2 e registros"),
@@ -113,11 +113,6 @@ def extract_workbook(source):
         domains["NR" if status == "SIM" else "NRNonValued"].append(cell(code))
     require(len(domains["NR"]) == 4504 and len(domains["NRNonValued"]) == 948 and
             not set(domains["NR"]).intersection(domains["NRNonValued"]), "II NR 2026: domínio divergente")
-    domains["ND"] = [
-        cell(code).replace(".", "") for (code,) in
-        workbook["ND 2026"].iter_rows(min_row=8, max_row=1242, min_col=6, max_col=6, values_only=True)
-    ]
-    require(len(domains["ND"]) == 1235, "II ND 2026: domínio divergente")
     domains["FSFunction"], domains["FSSubfunction"] = [], []
     for function, subfunction in workbook["FS"].iter_rows(min_row=7, max_row=123, max_col=2, values_only=True):
         if function is not None:
@@ -180,7 +175,7 @@ def build():
     require(len(template) == 6121 and template[1].split(";") == catalog["header"]
             and all(len(line.split(";")) == 16 for line in template),
             "T: estrutura não coincide com o leiaute")
-    payload = dict(year=2026, rulesVersion="ARQ-MVP-001-ACEITE+E02+C09–C14", sources=sources, **catalog, institutions=institutions,
+    payload = dict(year=2026, rulesVersion="ARQ-MVP-001-ACEITE+E02+C09+C10+C11+C13", sources=sources, **catalog, institutions=institutions,
                    extraction=dict(institutionPages=pages, eligiblePcasp=pcasp_count, institutionAmbiguities=[]))
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return dict(version=f"2026-{hashlib.sha256(encoded).hexdigest()}", **payload)

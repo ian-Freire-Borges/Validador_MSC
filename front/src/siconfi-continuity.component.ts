@@ -3,8 +3,8 @@ import { Component, computed, input, signal } from '@angular/core';
 import type { OnChanges, OnDestroy } from '@angular/core';
 import type { MonthlyBalances } from './monthly-balances.ts';
 import { historyService } from './siconfi-history.ts';
-import { compareMonthlyBalances } from './siconfi-monthly-balances.ts';
-import type { PreviousBalanceResult } from './siconfi-monthly-balances.ts';
+import { compareMonthlyPeriods } from './siconfi-monthly-balances.ts';
+import type { BalanceDirection, MonthlyComparisonResult } from './siconfi-monthly-balances.ts';
 import { advisoryBalance, formatCompetence } from './report-presentation.ts';
 
 @Component({
@@ -21,25 +21,19 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
   readonly currentMonth = computed(() => formatCompetence(this.period()));
   readonly busy = signal(false);
   readonly status = signal('');
-  readonly result = signal<PreviousBalanceResult | null>(null);
-  readonly rows = computed(() => [
-    ...(this.result()?.differences ?? []),
-    ...(this.result()?.inferredDifferences ?? []).map(entry => ({
+  readonly results = signal<MonthlyComparisonResult[]>([]);
+  readonly comparisons = computed(() => this.results().map(result => {
+    const rows = [...result.differences, ...(result.inferredDifferences ?? []).map(entry => ({
       key: entry.key,
       official: entry.source === 'Siconfi' ? entry.observed : null,
       local: entry.source === 'CSV' ? entry.observed : null,
-    })),
-  ]);
-  readonly needsAttention = computed(() => {
-    const state = this.result()?.state;
-    return state === 'Divergente' || state === 'Parcial' || state === 'Inconclusiva';
-  });
-  readonly page = signal(1);
-  readonly visible = computed(() => {
-    const first = (this.page() - 1) * this.pageSize;
-    return this.rows().slice(first, first + this.pageSize);
-  });
-  readonly pageCount = computed(() => Math.ceil(this.rows().length / this.pageSize));
+    }))];
+    return { result, rows, pageCount: Math.ceil(rows.length / this.pageSize) };
+  }));
+  readonly hasRows = computed(() => this.comparisons().some(comparison => comparison.rows.length > 0));
+  readonly needsAttention = computed(() => this.results().some(({ state }) =>
+    state === 'Divergente' || state === 'Parcial' || state === 'Inconclusiva'));
+  readonly pages = signal({ anterior: 1, posterior: 1 });
 
   ngOnChanges(): void {
     this.reset();
@@ -48,8 +42,8 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
 
   reset(): void {
     this.stop();
-    this.result.set(null);
-    this.page.set(1);
+    this.results.set([]);
+    this.pages.set({ anterior: 1, posterior: 1 });
     this.status.set('');
   }
 
@@ -65,10 +59,12 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
     this.busy.set(true);
     this.status.set('A comparação com o Siconfi está em andamento.');
     try {
-      const result = await compareMonthlyBalances(balances, historyService.load.bind(historyService), request.signal);
+      await compareMonthlyPeriods(balances, historyService.load.bind(historyService), request.signal, result => {
+        if (this.request === request) this.results.update(results => [...results, result]);
+      });
       if (this.request === request) {
-        this.result.set(result);
-        this.status.set(balances.blocked && result.state !== 'Não aplicável'
+        const allBlocked = (balances.month === 1 || balances.blocked) && (balances.month === 12 || balances.ending.blocked);
+        this.status.set(allBlocked
           ? 'Comparação indisponível devido a dados inválidos ou incompletos no CSV.'
           : 'Confira o resultado da comparação.');
       }
@@ -79,12 +75,12 @@ export class SiconfiContinuity implements OnChanges, OnDestroy {
     }
   }
 
-  referenceMonth(result: PreviousBalanceResult): string {
+  referenceMonth(result: MonthlyComparisonResult): string {
     return formatCompetence('2026-' + String(result.month).padStart(2, '0'));
   }
 
-  movePage(change: number): void {
-    this.page.update(page => page + change);
+  movePage(direction: BalanceDirection, change: number): void {
+    this.pages.update(pages => ({ ...pages, [direction]: pages[direction] + change }));
   }
 
   private stop(): void {

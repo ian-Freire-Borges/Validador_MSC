@@ -5,7 +5,7 @@ import { columns } from '../src/catalog.ts';
 import { decimal, format } from '../src/decimal.ts';
 import { balanceKey } from '../src/monthly-balances.ts';
 import { HistoryError } from '../src/siconfi-history.ts';
-import { compareMonthlyBalances, normalizeMonthlyRow } from '../src/siconfi-monthly-balances.ts';
+import { compareMonthlyBalances, compareMonthlyPeriods, normalizeMonthlyRow } from '../src/siconfi-monthly-balances.ts';
 import { validate } from '../src/validation.ts';
 
 const account = '111110100';
@@ -15,6 +15,7 @@ const expected = { key, net: decimal('1.01') };
 const local = (month = 5) => ({
   entity: '2914604', month,
   blocked: false, balances: [expected], exclusions: [],
+  ending: { blocked: false, balances: [], exclusions: [] },
 });
 const page = (rows = [], nextOffset = null) => ({ rows, nextOffset });
 const run = (data, load, signal = new AbortController().signal) => compareMonthlyBalances(data, load, signal);
@@ -42,11 +43,11 @@ test('combina todas as dimensões, preserva zeros e usa decimais exatos', () => 
 test('extrai saldos locais só para BA mensal, distingue ausência e exclui a chave exata', () => {
   const rows = [csvRow('beginning_balance', '1.01'), csvRow('beginning_balance', '0'), csvRow('ending_balance', 'inválido')];
   const ba = verify('2914604EX', '2026-10', rows).monthlyBalances;
-  assert.deepEqual(ba, { ...local(10), balances: [expected] });
+  assert.deepEqual(ba, { ...local(10), ending: { blocked: false, balances: [], exclusions: [{ exact: key }] } });
   const invalidInitial = verify('2914604EX', '2026-10', [csvRow('beginning_balance', 'inválido')]).monthlyBalances;
   assert.deepEqual(invalidInitial.exclusions, [{ exact: key }]);
   const absent = verify('2914604EX', '2026-10', [csvRow('ending_balance', '0')]).monthlyBalances;
-  assert.deepEqual(absent, { ...local(10), balances: [] });
+  assert.deepEqual(absent, { ...local(10), balances: [], ending: { blocked: false, balances: [{ key, net: decimal('0') }], exclusions: [] } });
   assert.equal(verify('3550308EX', '2026-10', rows).monthlyBalances, null);
   assert.equal(verify('2914604EX', '2026-13', rows).monthlyBalances, null);
   assert.equal(verify('2914604EX', '2026-10', rows.concat('truncada')).monthlyBalances.blocked, true);
@@ -139,7 +140,6 @@ test('NR, ND, FS e AI preservam saldos, máscaras e exclusões do comparador his
   ]);
   assert.equal(result.rules.C11.failed, 2);
   assert.equal(result.rules.C13.failed, 0);
-  assert.deepEqual(result.localNotices.map(notice => notice.id), ['C13', 'C12', 'C14', 'C13']);
   assert.deepEqual(result.monthlyBalances, {
     ...local(10),
     balances: [
@@ -232,6 +232,63 @@ test('não consulta janeiro, consulta novembro para dezembro e distingue referê
   const failed = await run(local(), async () => { throw new HistoryError('Falha simulada.'); });
   assert.equal(failed.state, 'Inconclusiva');
   assert.match(failed.message, /Falha simulada/);
+});
+
+test('consulta somente referências mensais elegíveis e restringe o mês seguinte a classes completas', async () => {
+  const data = local(10);
+  data.ending.balances.push({ key, net: decimal('3') });
+  const collect = async (input, load) => {
+    const reports = [];
+    await compareMonthlyPeriods(input, load, new AbortController().signal, report => reports.push(report));
+    return reports;
+  };
+  const calls = [];
+  const reports = await collect(data, async filters => {
+    calls.push([filters.month, filters.valueType]);
+    return filters.accountClass === '1' ? page([reference]) : page();
+  });
+  assert.deepEqual([...new Set(calls.map(call => call.join('/')))], ['9/ending_balance', '11/beginning_balance']);
+  assert.equal(calls.length, 16);
+  assert.deepEqual(reports.map(result => result.direction), ['anterior', 'posterior']);
+  assert.equal(reports[0].state, 'Conforme');
+  assert.deepEqual(reports[1].differences, [{ key, local: '3', official: '1.01', difference: '1.99' }]);
+
+  const failed = await collect(data, async (filters, offset) => {
+    if (filters.month === '11' && filters.accountClass === '2') {
+      if (offset === 0) return page([], 5000);
+      throw new HistoryError('Falha da classe posterior.', 503);
+    }
+    if (filters.accountClass !== '1') return page();
+    return page([{ ...reference, valor: filters.month === '9' ? '2' : '1.01' }]);
+  });
+  assert.equal(failed[0].state, 'Divergente');
+  assert.deepEqual(failed[0].differences, [{ key, local: '1.01', official: '2', difference: '−0.99' }]);
+  assert.equal(failed[1].state, 'Inconclusiva');
+  assert.match(failed[1].message, /Falha da classe posterior/);
+  assert.deepEqual(failed[1].differences, []);
+  assert.equal(failed[1].inferredDifferences, undefined);
+  assert.equal(failed[1].missingInCsv + failed[1].missingInSiconfi, 0);
+
+  const limitedCalls = [];
+  const limited = await collect(data, async filters => {
+    limitedCalls.push(filters.month);
+    throw new HistoryError('Limite HTTP 429', 429);
+  });
+  assert.deepEqual(limitedCalls, ['9']);
+  assert.ok(limited.every(entry => entry.state === 'Inconclusiva' && /429/.test(entry.message)));
+
+  for (const [period, month, type, direction] of [[1, '2', 'beginning_balance', 'posterior'], [12, '11', 'ending_balance', 'anterior']]) {
+    let requests = 0;
+    const result = await collect({ ...data, month: period }, async filters => {
+      requests++;
+      assert.equal(filters.month, month);
+      assert.equal(filters.valueType, type);
+      return page();
+    });
+    assert.equal(requests, 8);
+    assert.deepEqual(result.map(entry => [entry.direction, entry.state]), [[direction, 'Sem referência na API']]);
+  }
+  await assert.rejects(collect({ ...data, month: 13 }, async () => assert.fail()), /mensais de 2026/);
 });
 
 test('descarta uma classe incompleta ou ambígua sem perder as classes concluídas', async () => {

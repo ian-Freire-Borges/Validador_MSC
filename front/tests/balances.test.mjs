@@ -19,7 +19,6 @@ const run = (rows, { period = '2026-01', metadata = '3550308EX;' + period, guide
 const groups = (result, id) => result.balances.groups.filter(group => group.id === id);
 const totals = group => group.totals.map(total => total.value);
 const origins = group => group.blocks.flatMap(block => block.origins.items);
-const alerts = (result, type = 'SAL-EQU-TIPO') => result.balances.notices.filter(notice => notice.id === type);
 const normative = result => result.balances.groups.map(group => [group.id, group.group, group.state, totals(group)]);
 
 test('mensal: consistência por combinação e equilíbrio por natureza, com somas por tipo', () => {
@@ -31,11 +30,8 @@ test('mensal: consistência por combinação e equilíbrio por natureza, com som
   assert.deepEqual(groups(result, CONS).map(totals), [['100', '20', '120', '120', '0'], ['−100', '−20', '−120', '−120', '0']]);
   assert.deepEqual(groups(result, EQU).map(group => group.state), ['Conforme', 'Não aplicável', 'Não aplicável']);
   assert.deepEqual(totals(groups(result, EQU)[0]), ['250', '250', '0']);
-  assert.deepEqual(alerts(result), []);
   const withoutCounterpart = run([row(A, SI, '100', 'D'), row(A, M, '25', 'D'), row(A, M, '5', 'C'), row(A, SF, '120', 'D')]);
-  assert.deepEqual(alerts(withoutCounterpart).map(notice => [notice.type, ...totals(notice)]), [
-    [SI, '100', '0', '100'], [M, '25', '5', '20'], [SF, '120', '0', '120'],
-  ]);
+  assert.deepEqual(totals(groups(withoutCounterpart, EQU)[0]), ['245', '5', '240']);
 });
 
 test('inversão de natureza e diferença do observado menos o esperado', () => {
@@ -64,7 +60,7 @@ test('decimais exatos, múltiplos movimentos, ordem das linhas e dos slots', () 
   assert.equal(totals(groups(run([row(A, M, tiny, 'D')]), CONS)[0]).at(-1), '−' + tiny);
 });
 
-test('zeros omitidos ou explícitos, compensação por tipo apenas como alerta e síntese conforme', () => {
+test('zeros omitidos ou explícitos e compensação entre tipos preservam a síntese conforme', () => {
   const start = [row(A, SI, '10', 'D'), row(A, M, '10', 'C')];
   for (const rows of [start, [...start, row(A, SF, '0', 'C')]]) {
     const result = run(rows);
@@ -72,7 +68,6 @@ test('zeros omitidos ou explícitos, compensação por tipo apenas como alerta e
     assert.equal(result.rules[CONS].state, 'Conforme');
     assert.equal(result.rules[EQU].state, 'Conforme');
     assert.deepEqual(totals(groups(result, EQU)[0]), ['10', '10', '0']);
-    assert.deepEqual(alerts(result).map(notice => [notice.type, totals(notice).at(-1)]), [[SI, '10'], [M, '−10']]);
     assert.equal(result.findings.length, 0);
   }
   const blocked = run([...start, row(A, SF, '0', '')]);
@@ -84,18 +79,19 @@ test('zeros omitidos ou explícitos, compensação por tipo apenas como alerta e
   assert.deepEqual(groups(allZero, EQU).map(group => group.state), ['Não aplicável', 'Não aplicável', 'Conforme']);
 });
 
-test('linhas duplicadas somam e a indicação traz as ocorrências com amostra limitada', () => {
+test('linhas duplicadas somam e os grupos preservam amostra limitada das linhas', () => {
   const movement = [row(A, M, '4', 'D', [po, fp]), row(A, M, '04.00', 'D', [fp, po])];
   for (const [final, state, diff] of [['8', 'Conforme', '0'], ['4', 'Falhou', '−4']]) {
     const result = run([...movement, row(A, SF, final, 'D', [po, fp])]);
     const group = groups(result, CONS)[0];
     assert.equal(group.state, state);
     assert.equal(totals(group).at(-1), diff);
-    assert.deepEqual(alerts(result, 'SAL-CONS-REP').map(notice => notice.lines), [{ count: 2, items: [3, 4] }]);
+    assert.deepEqual(group.lines, { count: 3, items: [3, 4, 5] });
   }
   const duplicateOnly = run(Array(8).fill(row(A, SF, '0', 'D')));
-  assert.equal(duplicateOnly.summary, good);
-  assert.deepEqual(alerts(duplicateOnly, 'SAL-CONS-REP')[0].lines, { count: 8, items: [3, 4, 5, 6, 7] });
+  assert.equal(duplicateOnly.rules.E09.state, 'Falhou');
+  assert.equal(duplicateOnly.rules[CONS].state, 'Conforme');
+  assert.deepEqual(groups(duplicateOnly, CONS)[0].lines, { count: 8, items: [3, 4, 5, 6, 7] });
 });
 
 test('repetição de TIPO com código igual ou distinto e chaves inválidas bloqueiam a conta, mas preservam EQU', () => {
@@ -161,7 +157,6 @@ test('tipo inválido bloqueia a natureza e todas as suas partições, mesmo se p
   assert.equal(patrimonial.state, 'Bloqueada');
   assert.deepEqual(patrimonial.blocks.map(block => block.type), [SI, M, SF]);
   assert.equal(orcamentaria.state, 'Conforme');
-  assert.deepEqual(alerts(result), []);
 });
 
 test('2026-12 e 2026-13 calculados no próprio arquivo', () => {
@@ -193,7 +188,6 @@ test('pré-requisitos globais bloqueiam os dois cálculos, mesmo após subtotal 
   ]) {
     assert.deepEqual(result.balances.groups.map(group => [group.id, group.group, group.state, group.blocks[0].reason]),
       [[CONS, 'Arquivo', 'Bloqueada', cause], [EQU, 'Arquivo', 'Bloqueada', cause]]);
-    assert.deepEqual(result.balances.notices, []);
     assert.equal(origins(result.balances.groups[0])[0].rule, source);
   }
   assert.equal(run([]).rules.E09.state, 'Falhou');

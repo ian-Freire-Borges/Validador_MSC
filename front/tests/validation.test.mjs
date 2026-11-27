@@ -16,6 +16,8 @@ const header = columns.join(';');
 const meta = '3550308EX;2026-01';
 const file = (row = makeRow(), { first = meta, second = header, newline = '\n', trailing = false } = {}) =>
   [first, second, ...(Array.isArray(row) ? row : [row])].join(newline) + (trailing ? newline : '');
+const balancedFile = (row = makeRow(), options) => file([row, ...['D', 'C'].map(side =>
+  makeRow({ 1: '111110200', 14: '1', 15: 'period_change', 16: side }))], options);
 const evaluate = (text, selectedCatalog = catalog) => validate(Buffer.from(text), selectedCatalog);
 const good = 'Sem pendências nas verificações executadas do MVP 1.1';
 const bad = 'Pendências nas verificações do MVP 1.1';
@@ -33,12 +35,12 @@ function checkFinding(result, id, line, fieldIndex, observed) {
 }
 
 test('arquivo mensal canônico é determinístico e preserva regras sem candidato', () => {
-  const result = evaluate(file());
+  const result = evaluate(balancedFile());
   assert.equal(result.summary, good);
   assert.equal(result.institutionName, 'Prefeitura Municipal de São Paulo - SP');
   assert.equal(result.periodKind, 'Mensal');
-  assert.equal(result.records, 1);
-  assert.deepEqual(result, evaluate(file()));
+  assert.equal(result.records, 3);
+  assert.deepEqual(result, evaluate(balancedFile()));
   assert.deepEqual(Object.keys(result.rules), Object.keys(rules));
   for (const id of Object.keys(rules)) {
     assert.equal(result.rules[id].state, ['C06', 'C07', 'C09', 'C10', 'C11', 'C13'].includes(id) ? 'Não aplicável' : 'Conforme', id);
@@ -55,7 +57,7 @@ test('L01: template original com byte incompatível com UTF-8', () => {
 });
 
 test('L01: BOM UTF-8, BOM incompatível, NUL e UTF-8 malformado', () => {
-  assert.equal(evaluate('\ufeff' + file()).summary, good);
+  assert.equal(evaluate('\ufeff' + balancedFile()).summary, good);
   checkFinding(evaluate('\ufeff\ufeff' + file()), 'E02', 1, 1);
   for (const bytes of [[0x80], [0xff, 0xfe], [0xfe, 0xff], [0]]) {
     const result = validate(Uint8Array.from(bytes), catalog);
@@ -69,7 +71,7 @@ test('L01: BOM UTF-8, BOM incompatível, NUL e UTF-8 malformado', () => {
   const prefix = validate(secondByte, catalog);
   checkFinding(prefix, 'L01', 4, undefined, '0x80');
   assert.equal(prefix.findings[0].byteOffset, secondByte.length - 1);
-  assert.equal(prefix.rules.E09.state, 'Conforme');
+  assert.equal(prefix.rules.E09.state, 'Bloqueada');
 });
 
 test('E01: aspas, preservação de campos, controles e quebras físicas', () => {
@@ -87,13 +89,13 @@ test('E01: aspas, preservação de campos, controles e quebras físicas', () => 
   const prefix = evaluate(file([makeRow({ 16: 'd' }), makeRow({ 14: '"12' })]));
   checkFinding(prefix, 'E08', 3, 16, 'd');
   assert.equal(prefix.rules.E06.state, 'Bloqueada');
-  assert.equal(prefix.rules.E09.state, 'Conforme');
+  assert.equal(prefix.rules.E09.state, 'Bloqueada');
   assert.equal(evaluate(file([makeRow({ 14: '-1' }), makeRow({ 14: '"12' })])).rules.E09.state, 'Bloqueada');
   assert.equal(evaluate(file([makeRow({ 14: '"12' }), makeRow()])).rules.E09.state, 'Bloqueada');
 });
 
 test('L02/E03: formas de metadados, guia literal de 16 campos e dependências', () => {
-  assert.equal(evaluate(file(makeRow(), { first: meta + ';'.repeat(14) })).summary, good);
+  assert.equal(evaluate(balancedFile(makeRow(), { first: meta + ';'.repeat(14) })).summary, good);
   const metadata = evaluate(file(makeRow(), { first: meta + ';X' }));
   checkFinding(metadata, 'L02', 1, 3, 'X');
   assert.equal(metadata.rules.E05.state, 'Bloqueada');
@@ -102,7 +104,7 @@ test('L02/E03: formas de metadados, guia literal de 16 campos e dependências', 
   checkFinding(evaluate(file(makeRow(), { second: guide18 })), 'E03', 2, 14, 'IC7');
   checkFinding(evaluate(file(makeRow(), { second: columns.join(',') })), 'E03', 2, 1);
   checkFinding(evaluate(meta), 'E03', 2, undefined);
-  assert.equal(evaluate(file(makeRow(), { second: columns.map(s => '"' + s + '"').join(';') })).summary, good);
+  assert.equal(evaluate(balancedFile(makeRow(), { second: columns.map(s => '"' + s + '"').join(';') })).summary, good);
   checkFinding(evaluate(file(header)), 'C01', 3, 1, 'CONTA');
 });
 
@@ -125,7 +127,7 @@ test('E02: conhecida municipal, inelegível, outra esfera e cadastro inconclusiv
 
 test('E04: meses de fronteira e encerramento', () => {
   for (const [period, kind] of [['2026-01', 'Mensal'], ['2026-12', 'Mensal'], ['2026-13', 'Encerramento']]) {
-    const result = evaluate(file(makeRow(), { first: '3550308EX;' + period }));
+    const result = evaluate(balancedFile(makeRow(), { first: '3550308EX;' + period }));
     assert.equal(result.periodKind, kind);
     assert.equal(result.summary, good);
   }
@@ -140,11 +142,11 @@ test('E05/E09: registro curto, linha em branco adicional, presença de valor e r
   checkFinding(result, 'E05', 3, undefined, '15');
   assert.equal(result.rules.E06.passed, 1);
   assert.equal(result.rules.E06.blocked, 1);
-  assert.equal(result.rules.E09.state, 'Conforme');
+  assert.equal(result.rules.E09.state, 'Bloqueada');
   checkFinding(evaluate(file(makeRow()) + '\n\n'), 'E05', 4, undefined);
   checkFinding(evaluate(file([])), 'E09', undefined, undefined);
   checkFinding(evaluate(file(short)), 'E09', undefined, undefined);
-  assert.equal(evaluate(file(makeRow({ 14: '0' }))).rules.E09.state, 'Conforme');
+  checkFinding(evaluate(file(makeRow({ 14: '0' }))), 'E09', undefined, undefined, 'Todos os valores dos registros são zero');
 });
 
 test('E06/E07/E08: magnitude em texto, domínios literais e campos exigidos para zero', () => {
@@ -155,10 +157,29 @@ test('E06/E07/E08: magnitude em texto, domínios literais e campos exigidos para
     checkFinding(evaluate(file(makeRow({ 14: value }))), 'E06', 3, 14, value);
   }
   for (const type of ['beginning_balance', 'period_change', 'ending_balance']) {
-    assert.equal(evaluate(file(makeRow({ 15: type, 16: 'C' }))).summary, good);
+    assert.equal(evaluate(balancedFile(makeRow({ 15: type, 16: 'C' }))).summary, good);
   }
   for (const type of ['Period_Change', '']) checkFinding(evaluate(file(makeRow({ 14: '0', 15: type }))), 'E07', 3, 15, type);
   for (const nature of ['d', '']) checkFinding(evaluate(file(makeRow({ 14: '0', 16: nature }))), 'E08', 3, 16, nature);
+});
+
+test('E09 rejeita MSC mensal integralmente zerada quando é possível verificar todos os valores', () => {
+  const zeros = ['0', '00.0000', '000'].map(value => makeRow({ 14: value }));
+  const rejected = evaluate(file(zeros));
+  checkFinding(rejected, 'E09', undefined, undefined, 'Todos os valores dos registros são zero');
+  assert.equal(rejected.findings.filter(finding => finding.status === 'Falhou').length, 1);
+
+  const tiny = '0.' + '0'.repeat(330) + '1';
+  const balanced = evaluate(file([...zeros, ...['D', 'C'].map(side => makeRow({ 14: tiny, 15: 'period_change', 16: side }))]));
+  assert.equal(balanced.rules.E09.state, 'Conforme');
+  assert.equal(balanced.summary, good);
+
+  for (const row of ['111110100;', makeRow({ 14: 'inválido' }), makeRow({ 15: 'inválido' }), makeRow({ 16: '' }), makeRow({ 5: 'FP' })]) {
+    const uncertain = evaluate(file([...zeros, row]));
+    assert.equal(uncertain.rules.E09.state, 'Bloqueada');
+    assert.ok(!uncertain.findings.some(finding => finding.id === 'E09'));
+  }
+  assert.equal(evaluate(file(zeros, { first: '3550308EX;2026-13' })).rules.E09.state, 'Conforme');
 });
 
 test('relaciona falhas de registro à conta literal sem atribuir conta a erros gerais ou truncados', () => {
@@ -179,7 +200,7 @@ test('relaciona falhas de registro à conta literal sem atribuir conta a erros g
 });
 
 test('E10/C02: espaços ASCII no TIPO só são ignorados quando o IC está vazio', () => {
-  const absent = evaluate(file(makeRow({ 11: ' ', 13: '"  "' })));
+  const absent = evaluate(balancedFile(makeRow({ 11: ' ', 13: '"  "' })));
   assert.equal(absent.summary, good);
   assert.deepEqual(absent.findings, []);
 
@@ -194,7 +215,7 @@ test('E10/C02: espaços ASCII no TIPO só são ignorados quando o IC está vazio
 
 test('E10/C02/C03/C04/C05: pares em posições livres e dependências locais', () => {
   for (let pair = 1; pair <= 6; pair++) {
-    const result = evaluate(file(makeRow({ 2: '', 3: '', [pair * 2]: '10131', [pair * 2 + 1]: 'PO' })));
+    const result = evaluate(balancedFile(makeRow({ 2: '', 3: '', [pair * 2]: '10131', [pair * 2 + 1]: 'PO' })));
     assert.equal(result.summary, good, String(pair));
   }
   const missingType = evaluate(file(makeRow({ 3: '' })));
@@ -213,7 +234,7 @@ test('E10/C02/C03/C04/C05: pares em posições livres e dependências locais', (
   assert.equal(width.rules.C08.state, 'Bloqueada');
   checkFinding(evaluate(file(makeRow({ 4: '12345678', 5: 'NR' }))), 'C04', 3, 5, 'NR');
   checkFinding(evaluate(file(makeRow({ 2: '', 3: '' }))), 'C05', 3, undefined);
-  assert.equal(evaluate(file(makeRow({ 4: '1500', 5: 'FR' }))).summary, good);
+  assert.equal(evaluate(balancedFile(makeRow({ 4: '1500', 5: 'FR' }))).summary, good);
 });
 
 test('C01/C06/C07/C08: plano de contas, domínios ativos e casos adiados', () => {
@@ -236,7 +257,7 @@ test('C01/C06/C07/C08: plano de contas, domínios ativos e casos adiados', () =>
 test('C09 aplica prefixos e códigos principais subnacionais do catálogo FR 2026', () => {
   const funding = (code, fields = {}) => makeRow({ 8: code, 9: 'FR', ...fields });
   for (const code of ['1500', '2500', '9500', '1898', '1899', '1704']) {
-    const result = evaluate(file(funding(code)));
+    const result = evaluate(balancedFile(funding(code)));
     assert.equal(result.rules.C09.state, 'Conforme', code);
     assert.equal(result.summary, good, code);
   }
@@ -270,7 +291,7 @@ test('C09 aplica prefixos e códigos principais subnacionais do catálogo FR 202
 test('C10 valida os três blocos de CO 2026 independentemente de E10, C03 e C04', () => {
   const co = (code, fields = {}) => makeRow({ 8: code, 9: 'CO', ...fields });
   for (const code of ['1001', '1070', '3110', '5001']) {
-    const result = evaluate(file(co(code)));
+    const result = evaluate(balancedFile(co(code)));
     assert.equal(result.rules.C10.state, 'Conforme', code);
     assert.equal(result.summary, good, code);
   }
@@ -300,10 +321,9 @@ test('C10 valida os três blocos de CO 2026 independentemente de E10, C03 e C04'
 });
 
 test('C11 diferencia NR valorizável, não valorizável, ausente e desdobramento 999', () => {
-  const nr = code => evaluate(file(makeRow({ 1: '521110000', 8: code, 9: 'NR' })));
+  const nr = code => evaluate(balancedFile(makeRow({ 1: '521110000', 8: code, 9: 'NR' })));
   for (const code of ['11110101', '99900000']) {
     assert.equal(nr(code).rules.C11.state, 'Conforme');
-    assert.deepEqual(nr(code).localNotices, []);
   }
   for (const [code, reason] of [['10000000', /não valorizável/], ['00000000', /não consta/]]) {
     const result = nr(code);
@@ -314,82 +334,38 @@ test('C11 diferencia NR valorizável, não valorizável, ausente e desdobramento
   assert.equal(detail.summary, good);
   assert.equal(detail.rules.C11.state, 'Não aplicável');
   assert.deepEqual(detail.findings, []);
-  assert.deepEqual(detail.localNotices, []);
   assert.equal(detail.rules.C11.passed, 0);
   const malformed = nr('1111010');
   checkFinding(malformed, 'C03', 3, 8, '1111010');
   assert.equal(malformed.rules.C11.state, 'Bloqueada');
-  assert.deepEqual(malformed.localNotices, []);
 });
 
-test('C13 distingue componentes fora do rol de cruzamentos de FS a conferir', () => {
-  const fs = code => evaluate(file(makeRow({ 1: '522110100', 8: code, 9: 'FS' })));
-  for (const code of ['01061', '04601', '04602', '04603', '04604', '99997', '99999', '28841', '28847']) {
+test('C13 rejeita componentes fora do rol e aceita componentes publicados', () => {
+  const fs = code => evaluate(balancedFile(makeRow({ 1: '522110100', 8: code, 9: 'FS' })));
+  for (const code of ['01061', '04601', '04602', '04603', '04604', '99997', '99999', '28841', '28847',
+    '01846', '28301', '10841', '01997', '01999', '99031']) {
     const result = fs(code);
+    assert.equal(result.summary, good, code);
+    assert.deepEqual(result.findings, [], code);
     assert.equal(result.rules.C13.state, 'Conforme', code);
-    assert.deepEqual(result.localNotices, [], code);
-  }
-  for (const code of ['00031', '01000', '99000']) {
-    const result = fs(code);
-    checkFinding(result, 'C13', 3, 8, code);
-    assert.deepEqual(result.localNotices, []);
-  }
-  for (const [code, message] of [
-    ['01846', /Encargos Especiais.*841 a 847/], ['28301', /Encargos Especiais/], ['10841', /Encargos Especiais/],
-    ['01997', /reservas/], ['01999', /reservas/], ['99031', /reservas/],
-  ]) {
-    const result = fs(code);
-    assert.equal(result.summary, good);
-    assert.deepEqual(result.findings, []);
-    assert.equal(result.rules.C13.state, 'Conforme');
     assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
     assert.equal(result.rules['SAL-EQU-01'].state, 'Conforme');
-    assert.equal(result.localNotices.length, 1);
-    assert.equal(result.localNotices[0].id, 'C13');
-    assert.match(result.localNotices[0].guidance, message);
   }
-  for (let pair = 1; pair <= 6; pair++) {
-    const po = pair === 1 ? { 4: '10131', 5: 'PO' } : {};
-    const result = evaluate(file(makeRow({ 1: '522110100', ...po, [pair * 2]: '01846', [pair * 2 + 1]: 'FS' })));
-    const [notice] = result.localNotices;
-    assert.equal(notice.line, 3);
-    assert.equal(notice.fieldIndex, pair * 2);
-    assert.equal(notice.fieldName, 'IC' + pair);
-    assert.equal(notice.pair, pair);
-  }
+  for (const code of ['00031', '01000', '99000']) checkFinding(fs(code), 'C13', 3, 8, code);
   checkFinding(fs('1061'), 'C03', 3, 8, '1061');
   assert.equal(fs('1061').rules.C13.state, 'Bloqueada');
 });
 
-test('C12 e C14 informam sem bloquear o CSV ou os saldos', () => {
-  const nd = code => evaluate(file(makeRow({ 1: '522110100', 8: code, 9: 'ND' })));
-  for (const code of ['31904600', '99999999']) assert.deepEqual(nd(code).localNotices, []);
-  for (const [code, message] of [['31904601', /seis primeiros dígitos constam/], ['00000000', /seis primeiros dígitos estão ausentes/]]) {
-    const result = nd(code);
+test('ND e AI mantêm formato e não restringem o domínio ou o ano', () => {
+  const nd = code => evaluate(balancedFile(makeRow({ 1: '522110100', 8: code, 9: 'ND' })));
+  const ai = code => evaluate(balancedFile(makeRow({ 1: '531100000', 8: code, 9: 'AI' })));
+  for (const result of ['31904600', '31904601', '99999999', '00000000'].map(nd)
+    .concat(['0000', '0001', '1999', '2026', '2027'].map(ai))) {
     assert.equal(result.summary, good);
     assert.deepEqual(result.findings, []);
-    const [notice] = result.localNotices;
-    assert.equal(notice.id, 'C12');
-    assert.equal(notice.observed, code);
-    assert.equal(notice.accountCode, '522110100');
-    assert.equal(notice.line, 3);
-    assert.equal(notice.fieldName, 'IC4');
-    assert.equal(notice.fieldIndex, 8);
-    assert.equal(notice.pair, 4);
-    assert.match(notice.guidance, message);
     assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
   }
-  const ai = code => evaluate(file(makeRow({ 1: '531100000', 8: code, 9: 'AI' })));
-  for (const code of ['0001', '1999', '2026']) assert.deepEqual(ai(code).localNotices, []);
-  for (const code of ['0000', '2027']) {
-    const result = ai(code);
-    assert.equal(result.summary, good);
-    assert.deepEqual(result.findings, []);
-    assert.equal(result.localNotices[0].id, 'C14');
-    assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
-  }
-  assert.deepEqual(ai('202').localNotices, []);
-  assert.deepEqual(nd('3.1.90.46.00').localNotices, []);
+  checkFinding(ai('202'), 'C03', 3, 8, '202');
   checkFinding(nd('3.1.90.46.00'), 'C03', 3, 8);
 });
 
