@@ -41,7 +41,7 @@ test('arquivo mensal canônico é determinístico e preserva regras sem candidat
   assert.deepEqual(result, evaluate(file()));
   assert.deepEqual(Object.keys(result.rules), Object.keys(rules));
   for (const id of Object.keys(rules)) {
-    assert.equal(result.rules[id].state, ['C06', 'C07', 'C09'].includes(id) ? 'Não aplicável' : 'Conforme', id);
+    assert.equal(result.rules[id].state, ['C06', 'C07', 'C09', 'C10'].includes(id) ? 'Não aplicável' : 'Conforme', id);
   }
 });
 
@@ -265,6 +265,38 @@ test('C09 aplica prefixos e códigos principais subnacionais do catálogo FR 202
   const otherScope = evaluate(file(funding('1504'), { first: '35EX;2026-01' }));
   assert.equal(otherScope.rules.C09.state, 'Bloqueada');
   assert.ok(!otherScope.findings.some(item => item.id === 'C09'));
+});
+
+test('C10 valida os três blocos de CO 2026 independentemente de E10, C03 e C04', () => {
+  const co = (code, fields = {}) => makeRow({ 8: code, 9: 'CO', ...fields });
+  for (const code of ['1001', '1070', '3110', '5001']) {
+    const result = evaluate(file(co(code)));
+    assert.equal(result.rules.C10.state, 'Conforme', code);
+    assert.equal(result.summary, good, code);
+  }
+  for (const code of ['0000', '0100', '9999']) {
+    const result = evaluate(file(co(code)));
+    checkFinding(result, 'C10', 3, 8, code);
+    assert.equal(result.rules.C03.state, 'Conforme');
+    assert.equal(result.rules.C04.state, 'Conforme');
+    const finding = result.findings.find(item => item.id === 'C10');
+    assert.equal(finding.fieldName, 'IC4');
+    assert.equal(finding.accountCode, '111110100');
+    assert.match(finding.expected, /aba CO 2026/);
+  }
+  for (const [code, rule] of [['', 'E10'], ['100', 'C03'], ['１００１', 'C03']]) {
+    const result = evaluate(file(co(code)));
+    checkFinding(result, rule, 3, 8, code);
+    assert.equal(result.rules.C10.state, 'Bloqueada');
+    assert.ok(!result.findings.some(item => item.id === 'C10'));
+  }
+  const accountWithoutCo = Object.keys(catalog.accounts).find(code => !catalog.combinations[catalog.accounts[code]].includes('CO'));
+  const incompatible = evaluate(file(co('0000', { 1: accountWithoutCo })));
+  checkFinding(incompatible, 'C04', 3, 9, 'CO');
+  checkFinding(incompatible, 'C10', 3, 8, '0000');
+  const otherScope = evaluate(file(co('0000'), { first: '35EX;2026-01' }));
+  assert.equal(otherScope.rules.C10.state, 'Bloqueada');
+  assert.ok(!otherScope.findings.some(item => item.id === 'C10'));
 });
 
 test('catálogo incompatível bloqueia dependências e mantém as estruturais', () => {

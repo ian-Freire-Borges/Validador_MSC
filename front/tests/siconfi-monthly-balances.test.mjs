@@ -100,6 +100,31 @@ test('domínio local de FR preserva as chaves e exclusões do comparador histór
   assert.equal(localOnly.rules['SAL-EQU-01'].state, 'Falhou');
 });
 
+test('domínio local de CO preserva chaves e exclusões históricas inclusive com FR inválida', () => {
+  const code = '111110100';
+  const initial = (amount, co, fr, ...extra) => csvRow('beginning_balance', amount, {
+    code, pairs: [['10131', 'PO'], [co, 'CO'], [fr, 'FR'], ...extra],
+  });
+  const report = verify('2914604EX', '2026-10', [
+    initial('1.01', '0000', '1504'),
+    initial('inválido', '0001', '1500'),
+    initial('2.01', '0002', '1500', ['3', 'FP']),
+  ]);
+  assert.equal(report.rules.C10.failed, 3);
+  assert.equal(report.rules.C09.failed, 1);
+  assert.deepEqual(report.monthlyBalances, {
+    ...local(10),
+    balances: [{ key: code + ' · CO 0000 · FR 1504 · PO 10131', net: { units: 101n, scale: 2 } }],
+    exclusions: [
+      { exact: code + ' · CO 0001 · FR 1500 · PO 10131' },
+      { account: code, pairs: ['CO 0002', 'FR 1500', 'PO 10131'] },
+    ],
+  });
+  const localOnly = verify('2914604EX', '2026-10', [initial('1.01', '0000', '1500')]);
+  assert.equal(localOnly.rules['SAL-CONS-01'].state, 'Bloqueada');
+  assert.equal(localOnly.rules['SAL-EQU-01'].state, 'Falhou');
+});
+
 test('omite máscaras e chaves exatas dos dois lados sem excluir conta irmã ou outro PO', async () => {
   const fiscal = (code, po, nr, value, side = 'D') => csvRow('beginning_balance', value, {
     code, pairs: [['1500', 'FR'], [po, 'PO'], [nr, 'NR']], side,

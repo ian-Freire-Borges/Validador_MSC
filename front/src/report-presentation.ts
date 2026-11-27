@@ -25,6 +25,7 @@ const findingTitles: Record<Exclude<RuleId, BalanceGroup['id']>, string> = {
   C07: 'O código de dívida consolidada é inválido.',
   C08: 'O código de poder e órgão (PO) não consta na tabela de referência.',
   C09: 'Fonte de Recursos (FR) fora do domínio municipal de 2026.',
+  C10: 'Código de Acompanhamento da Execução Orçamentária (CO) fora do domínio de 2026.',
 };
 
 export function findingTitle(id: RuleId): string {

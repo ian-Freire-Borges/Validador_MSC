@@ -131,6 +131,24 @@ test('mostra FR bem formada fora do domínio municipal como erro de conteúdo lo
   await expect(result.getByRole('row').filter({ hasText: 'Regra C03' })).toHaveCount(0);
 });
 
+test('mostra CO fora do domínio de 2026 como erro de conteúdo localizado', async ({ page, context, baseURL }) => {
+  await mockSiconfi(context, baseURL, () => []);
+  const fields = row(debitAccount, '0.00', 'ending_balance', 'D').split(';');
+  fields[7] = '0100';
+  fields[8] = 'CO';
+  await validateFile(page, '3550308EX', [fields.join(';')]);
+
+  const result = page.getByRole('tabpanel', { name: 'Resultado' });
+  const finding = result.getByRole('row').filter({ hasText: 'Regra C10' });
+  await expect(finding.getByRole('cell', { name: 'Conteúdo', exact: true })).toBeVisible();
+  await expect(finding).toContainText('Código de Acompanhamento da Execução Orçamentária (CO) fora do domínio de 2026.');
+  await expect(finding).toContainText('Conta: ' + debitAccount + ' · Linha: 3');
+  await expect(finding).toContainText('Valor informado: 0100');
+  await expect(finding).toContainText('Código de quatro dígitos listado na aba CO 2026 do Anexo II');
+  await expect(finding).toContainText('Regra C10 · Campo 8 · IC4 · Par 4');
+  await expect(result.getByRole('row').filter({ hasText: 'Regra C03' })).toHaveCount(0);
+});
+
 test('mostra consistência e equilíbrio patrimonial na aba Resultado', async ({ page, context, baseURL }) => {
   const calls = [];
   await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
