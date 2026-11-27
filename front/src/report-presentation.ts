@@ -1,5 +1,5 @@
 import type { BalanceGroup } from './balances.ts';
-import type { RuleId } from './validation.ts';
+import type { LocalNotice, RuleId } from './validation.ts';
 
 const monthFormatter = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const balanceFormatter = new Intl.NumberFormat('pt-BR');
@@ -26,6 +26,14 @@ const findingTitles: Record<Exclude<RuleId, BalanceGroup['id']>, string> = {
   C08: 'O código de poder e órgão (PO) não consta na tabela de referência.',
   C09: 'Fonte de Recursos (FR) fora do domínio municipal de 2026.',
   C10: 'Código de Acompanhamento da Execução Orçamentária (CO) fora do domínio de 2026.',
+  C11: 'Natureza da Receita (NR) fora do domínio de 2026.',
+  C13: 'Função e Subfunção (FS) fora do domínio de 2026.',
+};
+
+export const localNoticeTitles: Record<LocalNotice['id'], string> = {
+  C12: 'Natureza da Despesa (ND) a conferir',
+  C13: 'Combinação de Função e Subfunção (FS) a conferir',
+  C14: 'Ano de Inscrição de Restos a Pagar (AI) a conferir',
 };
 
 export function findingTitle(id: RuleId): string {

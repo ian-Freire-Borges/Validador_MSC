@@ -41,7 +41,7 @@ test('arquivo mensal canônico é determinístico e preserva regras sem candidat
   assert.deepEqual(result, evaluate(file()));
   assert.deepEqual(Object.keys(result.rules), Object.keys(rules));
   for (const id of Object.keys(rules)) {
-    assert.equal(result.rules[id].state, ['C06', 'C07', 'C09', 'C10'].includes(id) ? 'Não aplicável' : 'Conforme', id);
+    assert.equal(result.rules[id].state, ['C06', 'C07', 'C09', 'C10', 'C11', 'C13'].includes(id) ? 'Não aplicável' : 'Conforme', id);
   }
 });
 
@@ -297,6 +297,100 @@ test('C10 valida os três blocos de CO 2026 independentemente de E10, C03 e C04'
   const otherScope = evaluate(file(co('0000'), { first: '35EX;2026-01' }));
   assert.equal(otherScope.rules.C10.state, 'Bloqueada');
   assert.ok(!otherScope.findings.some(item => item.id === 'C10'));
+});
+
+test('C11 diferencia NR valorizável, não valorizável, ausente e desdobramento 999', () => {
+  const nr = code => evaluate(file(makeRow({ 1: '521110000', 8: code, 9: 'NR' })));
+  for (const code of ['11110101', '99900000']) {
+    assert.equal(nr(code).rules.C11.state, 'Conforme');
+    assert.deepEqual(nr(code).localNotices, []);
+  }
+  for (const [code, reason] of [['10000000', /não valorizável/], ['00000000', /não consta/]]) {
+    const result = nr(code);
+    checkFinding(result, 'C11', 3, 8, code);
+    assert.match(result.findings.find(finding => finding.id === 'C11').expected, reason);
+  }
+  const detail = nr('99900001');
+  assert.equal(detail.summary, good);
+  assert.equal(detail.rules.C11.state, 'Não aplicável');
+  assert.deepEqual(detail.findings, []);
+  assert.deepEqual(detail.localNotices, []);
+  assert.equal(detail.rules.C11.passed, 0);
+  const malformed = nr('1111010');
+  checkFinding(malformed, 'C03', 3, 8, '1111010');
+  assert.equal(malformed.rules.C11.state, 'Bloqueada');
+  assert.deepEqual(malformed.localNotices, []);
+});
+
+test('C13 distingue componentes fora do rol de cruzamentos de FS a conferir', () => {
+  const fs = code => evaluate(file(makeRow({ 1: '522110100', 8: code, 9: 'FS' })));
+  for (const code of ['01061', '04601', '04602', '04603', '04604', '99997', '99999', '28841', '28847']) {
+    const result = fs(code);
+    assert.equal(result.rules.C13.state, 'Conforme', code);
+    assert.deepEqual(result.localNotices, [], code);
+  }
+  for (const code of ['00031', '01000', '99000']) {
+    const result = fs(code);
+    checkFinding(result, 'C13', 3, 8, code);
+    assert.deepEqual(result.localNotices, []);
+  }
+  for (const [code, message] of [
+    ['01846', /Encargos Especiais.*841 a 847/], ['28301', /Encargos Especiais/], ['10841', /Encargos Especiais/],
+    ['01997', /reservas/], ['01999', /reservas/], ['99031', /reservas/],
+  ]) {
+    const result = fs(code);
+    assert.equal(result.summary, good);
+    assert.deepEqual(result.findings, []);
+    assert.equal(result.rules.C13.state, 'Conforme');
+    assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
+    assert.equal(result.rules['SAL-EQU-01'].state, 'Conforme');
+    assert.equal(result.localNotices.length, 1);
+    assert.equal(result.localNotices[0].id, 'C13');
+    assert.match(result.localNotices[0].guidance, message);
+  }
+  for (let pair = 1; pair <= 6; pair++) {
+    const po = pair === 1 ? { 4: '10131', 5: 'PO' } : {};
+    const result = evaluate(file(makeRow({ 1: '522110100', ...po, [pair * 2]: '01846', [pair * 2 + 1]: 'FS' })));
+    const [notice] = result.localNotices;
+    assert.equal(notice.line, 3);
+    assert.equal(notice.fieldIndex, pair * 2);
+    assert.equal(notice.fieldName, 'IC' + pair);
+    assert.equal(notice.pair, pair);
+  }
+  checkFinding(fs('1061'), 'C03', 3, 8, '1061');
+  assert.equal(fs('1061').rules.C13.state, 'Bloqueada');
+});
+
+test('C12 e C14 informam sem bloquear o CSV ou os saldos', () => {
+  const nd = code => evaluate(file(makeRow({ 1: '522110100', 8: code, 9: 'ND' })));
+  for (const code of ['31904600', '99999999']) assert.deepEqual(nd(code).localNotices, []);
+  for (const [code, message] of [['31904601', /seis primeiros dígitos constam/], ['00000000', /seis primeiros dígitos estão ausentes/]]) {
+    const result = nd(code);
+    assert.equal(result.summary, good);
+    assert.deepEqual(result.findings, []);
+    const [notice] = result.localNotices;
+    assert.equal(notice.id, 'C12');
+    assert.equal(notice.observed, code);
+    assert.equal(notice.accountCode, '522110100');
+    assert.equal(notice.line, 3);
+    assert.equal(notice.fieldName, 'IC4');
+    assert.equal(notice.fieldIndex, 8);
+    assert.equal(notice.pair, 4);
+    assert.match(notice.guidance, message);
+    assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
+  }
+  const ai = code => evaluate(file(makeRow({ 1: '531100000', 8: code, 9: 'AI' })));
+  for (const code of ['0001', '1999', '2026']) assert.deepEqual(ai(code).localNotices, []);
+  for (const code of ['0000', '2027']) {
+    const result = ai(code);
+    assert.equal(result.summary, good);
+    assert.deepEqual(result.findings, []);
+    assert.equal(result.localNotices[0].id, 'C14');
+    assert.equal(result.rules['SAL-CONS-01'].state, 'Conforme');
+  }
+  assert.deepEqual(ai('202').localNotices, []);
+  assert.deepEqual(nd('3.1.90.46.00').localNotices, []);
+  checkFinding(nd('3.1.90.46.00'), 'C03', 3, 8);
 });
 
 test('catálogo incompatível bloqueia dependências e mantém as estruturais', () => {

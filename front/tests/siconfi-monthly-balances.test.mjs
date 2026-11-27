@@ -125,6 +125,36 @@ test('domínio local de CO preserva chaves e exclusões históricas inclusive co
   assert.equal(localOnly.rules['SAL-EQU-01'].state, 'Falhou');
 });
 
+test('NR, ND, FS e AI preservam saldos, máscaras e exclusões do comparador histórico', () => {
+  const row = (code, amount, ...pairs) => csvRow('beginning_balance', amount, {
+    code, pairs: [['10131', 'PO'], ...pairs],
+  });
+  const result = verify('2914604EX', '2026-10', [
+    row('621100000', '1', ['00000001', 'NR']),
+    row('621100000', 'inválido', ['10000000', 'NR']),
+    row('522110100', '2', ['10841', 'FS'], ['31904601', 'ND'], ['*ERRO*', 'FR']),
+    row('531100000', '3', ['2027', 'AI']),
+    row('621200000', '4', ['99900001', 'NR']),
+    row('522110100', '0', ['01846', 'FS']),
+  ]);
+  assert.equal(result.rules.C11.failed, 2);
+  assert.equal(result.rules.C13.failed, 0);
+  assert.deepEqual(result.localNotices.map(notice => notice.id), ['C13', 'C12', 'C14', 'C13']);
+  assert.deepEqual(result.monthlyBalances, {
+    ...local(10),
+    balances: [
+      { key: '621100000 · NR 00000001 · PO 10131', net: { units: 1n, scale: 0 } },
+      { key: '531100000 · AI 2027 · PO 10131', net: { units: 3n, scale: 0 } },
+      { key: '621200000 · NR 99900001 · PO 10131', net: { units: 4n, scale: 0 } },
+      { key: '522110100 · FS 01846 · PO 10131', net: { units: 0n, scale: 0 } },
+    ],
+    exclusions: [
+      { exact: '621100000 · NR 10000000 · PO 10131' },
+      { account: '522110100', pairs: ['FS 10841', 'ND 31904601', 'PO 10131'] },
+    ],
+  });
+});
+
 test('omite máscaras e chaves exatas dos dois lados sem excluir conta irmã ou outro PO', async () => {
   const fiscal = (code, po, nr, value, side = 'D') => csvRow('beginning_balance', value, {
     code, pairs: [['1500', 'FR'], [po, 'PO'], [nr, 'NR']], side,

@@ -28,12 +28,20 @@ export const rules = {
   C08: ['Domínio PO', 'V p. 5(b); I p. 7 e 11; II PO!A6:B97'],
   C09: ['Domínio FR municipal', 'I p. 8 e 11; II FR 2026!A7:B9 e A12:B121'],
   C10: ['Domínio CO', 'I p. 8 e 11; II CO 2026!A7:A68'],
+  C11: ['Domínio NR', 'I p. 9 e 11; II NR 2026!H6:K5457, desdobramentos em J5457'],
+  C13: ['Domínio FS', 'I p. 10 e 11; II FS!A3:B123; MCASP 11ª ed., p. 74, § 4.2.2.2'],
+} as const;
+
+export const advisoryRules = {
+  C12: ['Conferência da codificação de ND', 'II ND 2026!A3 e F8:F1242'],
+  C13: ['Conferência do cruzamento de FS', 'II FS!A115:B123; MCASP 11ª ed., p. 74, § 4.2.2.2'],
+  C14: ['Conferência do ano de inscrição de restos a pagar', 'I p. 11–12; II Informações Complementares!B14:F14'],
 } as const;
 
 export const widths = { PO: 5, FP: 1, DC: 1, FR: 4, CO: 4, NR: 8, ND: 8, FS: 5, AI: 4 };
 export const valueTypes = ['beginning_balance', 'period_change', 'ending_balance'];
 export const natures = ['D', 'C'];
-const approvedVersion = '2026-537236c267fb0debbe8d62e07b61cbae61a451b8dfe5dc3ddba7c811dfe3199e';
+const approvedVersion = '2026-f05e9a2685d59fd10351b0a7270661241eec5a652e3cba19003393e1581e9443';
 
 export interface Catalog {
   version: string;
@@ -60,7 +68,7 @@ export function compatibleCatalog(value: unknown): value is Catalog {
   const catalog = value as Catalog;
   if (
     catalog.version !== approvedVersion || catalog.year !== 2026 ||
-    catalog.rulesVersion !== 'ARQ-MVP-001-ACEITE+E02+C09+C10' ||
+    catalog.rulesVersion !== 'ARQ-MVP-001-ACEITE+E02+C09–C14' ||
     !['I', 'II', 'V', 'T', 'S'].every(key => {
       const source = catalog.sources?.[key];
       return source?.path && source.edition && source.region && /^[a-f0-9]{64}$/.test(source.sha256);
@@ -70,10 +78,15 @@ export function compatibleCatalog(value: unknown): value is Catalog {
     !catalog.widths || Object.keys(catalog.widths).length !== Object.keys(widths).length ||
     !Object.entries(widths).every(([kind, width]) => catalog.widths[kind] === width) ||
     !sameList(catalog.domains?.['FP'], ['1', '2']) || !sameList(catalog.domains?.['DC'], ['1']) ||
-    !catalog.domains || Object.keys(catalog.domains).length !== 5 ||
+    !catalog.domains || Object.keys(catalog.domains).length !== 10 ||
     !validList(catalog.domains['PO'], 92, code => /^[0-9]{5}$/.test(code)) ||
     !validList(catalog.domains['FR'], 294, code => /^[129][5-9][0-9]{2}$/.test(code)) ||
-    !validList(catalog.domains['CO'], 52, code => /^[0-9]{4}$/.test(code))
+    !validList(catalog.domains['CO'], 52, code => /^[0-9]{4}$/.test(code)) ||
+    !validList(catalog.domains['NR'], 4504, code => /^[0-9]{8}$/.test(code)) ||
+    !validList(catalog.domains['NRNonValued'], 948, code => /^[0-9]{8}$/.test(code)) ||
+    !validList(catalog.domains['ND'], 1235, code => /^[0-9]{8}$/.test(code)) ||
+    !validList(catalog.domains['FSFunction'], 29, code => /^[0-9]{2}$/.test(code)) ||
+    !validList(catalog.domains['FSSubfunction'], 117, code => /^[0-9]{3}$/.test(code))
   ) return false;
 
   if (!catalog.combinations || Object.keys(catalog.combinations).length !== 9 ||

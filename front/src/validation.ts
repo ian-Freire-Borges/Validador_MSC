@@ -1,4 +1,5 @@
 import { columns, compatibleCatalog, natures, rules, valueTypes } from './catalog.ts';
+import type { advisoryRules } from './catalog.ts';
 import { decodeLines, parseRecord } from './csv.ts';
 import { balanceOrigin, balanceRules, Balances } from './balances.ts';
 import type { BalanceOrigin } from './balances.ts';
@@ -35,6 +36,13 @@ interface Location {
   byteOffset?: number;
 }
 
+export interface LocalNotice extends Location {
+  id: keyof typeof advisoryRules;
+  accountCode: string;
+  observed: string;
+  guidance: string;
+}
+
 interface RuleCounts {
   passed: number;
   failed: number;
@@ -52,16 +60,19 @@ export interface ValidationResult {
   periodKind: 'Mensal' | 'Encerramento' | null;
   records: number;
   findings: Finding[];
+  localNotices: LocalNotice[];
   rules: Record<RuleId, RuleCounts & { state: RuleState }>;
   balances: ReturnType<Balances['finish']>;
   monthlyBalances: MonthlyBalances | null;
   summary: 'Pendências nas verificações do MVP 1.1' | 'Verificação incompleta' | 'Sem pendências nas verificações executadas do MVP 1.1';
 }
 
-const contentRules: RuleId[] = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09', 'C10'];
+const localDomainRules = { FR: 'C09', CO: 'C10', NR: 'C11', FS: 'C13' } as const;
+const localDomainIds: ReadonlySet<RuleId> = new Set(Object.values(localDomainRules));
+const contentRules: RuleId[] = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', ...localDomainIds];
 const recordRules: RuleId[] = ['E06', 'E07', 'E08', 'E10', ...contentRules];
 const dataRules: RuleId[] = ['E05', ...recordRules];
-const domainRules = { FP: 'C06', DC: 'C07', PO: 'C08', FR: 'C09', CO: 'C10' } as const;
+const domainRules = { FP: 'C06', DC: 'C07', PO: 'C08', ...localDomainRules } as const;
 const domainExpectations: Partial<Record<string, string>> = {
   PO: 'Código da aba PO do Anexo II',
   FR: 'Código FR municipal da aba FR 2026 do Anexo II, com prefixo 1, 2 ou 9 e código principal listado no bloco subnacional',
@@ -92,6 +103,11 @@ export function validate(
     ? candidate.version : null;
   const counts = Object.fromEntries(ruleIds.map(id => [id, { passed: 0, failed: 0, blocked: 0, reasons: {} }])) as Record<RuleId, RuleCounts>;
   const findings: Finding[] = [];
+  const localNotices: LocalNotice[] = [];
+  const valuedRevenue = new Set(catalog?.domains.NR);
+  const nonValuedRevenue = new Set(catalog?.domains.NRNonValued);
+  const publishedExpense = new Set(catalog?.domains.ND);
+  const publishedExpensePrefixes = new Set(catalog?.domains.ND.map(code => code.slice(0, 6)));
   const balances = new Balances();
   let institution: string | null = null;
   let institutionName: string | null = null;
@@ -277,14 +293,45 @@ export function validate(
           if (permitted) check('C04', allowed, kindAt, kind, permitted.join(', '));
           else block('C04', 'conta');
           let inDomain = true;
-          if (domainId) {
-            if (wide) {
+          if (wide) {
+            const notice = (id: LocalNotice['id'], guidance: string) =>
+              localNotices.push({ id, ...icAt, accountCode: account, observed: ic, guidance });
+            if (kind === 'NR') {
+              if (valuedRevenue.has(ic)) {
+                check('C11', true, icAt, ic, '');
+              } else if (nonValuedRevenue.has(ic)) {
+                inDomain = check('C11', false, icAt, ic, 'O código consta na aba NR 2026 como não valorizável. Informe um código marcado como valorizável.');
+              } else if (!ic.startsWith('999')) {
+                inDomain = check('C11', false, icAt, ic, 'O código não consta na aba NR 2026. Informe um código valorizável publicado nessa aba.');
+              }
+            } else if (kind === 'FS') {
+              const functionCode = ic.slice(0, 2);
+              const subfunctionCode = ic.slice(2);
+              const reserveMatch = (functionCode === '99') === (subfunctionCode === '997' || subfunctionCode === '999');
+              const specialChargesMatch = (functionCode === '28') === /^84[1-7]$/.test(subfunctionCode);
+              inDomain = check('C13', catalog.domains.FSFunction.includes(functionCode) &&
+                catalog.domains.FSSubfunction.includes(subfunctionCode),
+              icAt, ic, 'Use uma função e uma subfunção publicadas na aba FS do Anexo II.');
+              if (inDomain && (!reserveMatch || !specialChargesMatch)) {
+                notice('C13', [
+                  !reserveMatch ? 'Confira a classificação de reservas. As combinações de referência são 99997 e 99999.' : '',
+                  !specialChargesMatch ? 'Confira Encargos Especiais. A função 28 e as subfunções 841 a 847 devem ser usadas juntas.' : '',
+                ].filter(Boolean).join(' '));
+              }
+            } else if (kind === 'ND' && !publishedExpense.has(ic)) {
+              notice('C12', publishedExpensePrefixes.has(ic.slice(0, 6))
+                ? 'Os seis primeiros dígitos constam na referência de 2026. Confira o desdobramento informado e o mapeamento aplicado pelo ente.'
+                : 'O código completo e os seis primeiros dígitos estão ausentes da referência de 2026. Confira o mapeamento aplicado pelo ente.');
+            } else if (kind === 'AI' && (ic === '0000' || Number(ic) > catalog.year)) {
+              notice('C14', 'Confira o ano de inscrição de restos a pagar. O ano informado é zero ou posterior ao exercício da MSC.');
+            } else if (domainId) {
               const expected = domainExpectations[kind] ?? catalog.domains[kind].join(', ');
               inDomain = check(domainId, catalog.domains[kind].includes(ic), icAt, ic, expected);
             }
-            else block(domainId, 'largura');
+          } else if (domainId) {
+            block(domainId, 'largura');
           }
-          if (monthly && wide && allowed && (inDomain || kind === 'FR' || kind === 'CO')) trustedPairs.push([kind, ic]);
+          if (monthly && wide && allowed && (inDomain || (domainId && localDomainIds.has(domainId)))) trustedPairs.push([kind, ic]);
         }
         if (!contentBlocked) check('C05', po, location(lineCount), 'Nenhum par IC/PO completo', 'Pelo menos um par IC/PO completo');
         if (account) {
@@ -296,8 +343,8 @@ export function validate(
           else balances.record(lineCount, account, pairs, contentFindings.map(balanceOrigin).concat(repeated),
             value, typeIndex, fields[15], findings.slice(beforeValues, beforeContent).map(balanceOrigin));
           if (monthly) {
-            // The historical API comparison retains the original structural criteria for FR and CO.
-            const complete = Boolean(permitted) && contentFindings.every(finding => finding.id === 'C09' || finding.id === 'C10') &&
+            // The historical API comparison retains the original structural criteria for these ICs.
+            const complete = Boolean(permitted) && contentFindings.every(finding => localDomainIds.has(finding.id)) &&
               repeated.length === 0;
             const dimensions = complete ? pairs : uncertainPair ? [] : trustedPairs.filter(([kind]) => !repeatedTypes.has(kind));
             monthly.collector.record({ account: permitted ? account : undefined, dimensions, complete },
@@ -371,7 +418,7 @@ export function validate(
       'Sem pendências nas verificações executadas do MVP 1.1';
   return {
     catalogCompatible: Boolean(catalog), catalogVersion, institution, institutionName,
-    institutionStatus, period, periodKind, records, findings, rules: results, summary, balances: balanceResults,
+    institutionStatus, period, periodKind, records, findings, localNotices, rules: results, summary, balances: balanceResults,
     monthlyBalances: monthly?.collector.finish(monthly.competence) ?? null,
   };
 }

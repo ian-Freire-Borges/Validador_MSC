@@ -1,6 +1,6 @@
 import { ChangeDetectorRef, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { currency, findingTitle, formatCompetence, validationLabel } from './report-presentation.ts';
+import { currency, findingTitle, formatCompetence, localNoticeTitles, validationLabel } from './report-presentation.ts';
 import { SiconfiContinuity } from './siconfi-continuity.component.ts';
 import type { OnDestroy } from '@angular/core';
 import type { BlockReason, Finding, ValidationResult } from './validation.ts';
@@ -45,7 +45,15 @@ class App implements OnDestroy {
   readonly page = signal(1);
   readonly pageSize = 50;
   readonly printing = signal(false);
-  readonly noticesNeedAttention = computed(() => this.continuity()?.needsAttention() ?? false);
+  readonly localNotices = computed(() => this.result()?.localNotices ?? []);
+  readonly localNoticePage = signal(1);
+  readonly localNoticePages = computed(() => Math.ceil(this.localNotices().length / this.pageSize));
+  readonly visibleLocalNotices = computed(() => {
+    const start = (this.localNoticePage() - 1) * this.pageSize;
+    return this.localNotices().slice(start, start + this.pageSize);
+  });
+  readonly localNoticeTitles = localNoticeTitles;
+  readonly noticesNeedAttention = computed(() => this.localNotices().length > 0 || (this.continuity()?.needsAttention() ?? false));
   readonly noticesBusy = computed(() => this.continuity()?.busy() ?? false);
   readonly findings = computed(() => this.result()?.findings.filter(finding => finding.status === 'Falhou') ?? []);
   readonly hasSourceOfFundsExportError = computed(() => this.findings().some(finding => this.isSourceOfFundsExportError(finding)));
@@ -193,6 +201,7 @@ class App implements OnDestroy {
   private reset(status: string): void {
     this.stop();
     this.continuity()?.reset();
+    this.localNoticePage.set(1);
     this.result.set(null);
     this.progress.set(0);
     this.page.set(1);

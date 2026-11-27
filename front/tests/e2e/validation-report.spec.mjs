@@ -149,6 +149,40 @@ test('mostra CO fora do domínio de 2026 como erro de conteúdo localizado', asy
   await expect(result.getByRole('row').filter({ hasText: 'Regra C03' })).toHaveCount(0);
 });
 
+test('mostra somente avisos locais de ND, FS e AI sem reprovar o CSV ou consultar a API', async ({ page, context, baseURL }) => {
+  const calls = [];
+  await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
+  const withIc = (account, value, kind) => {
+    const fields = row(account, '0.00', 'ending_balance', 'D').split(';');
+    fields[7] = value;
+    fields[8] = kind;
+    return fields.join(';');
+  };
+  await validateFile(page, '3550308EX', [
+    withIc('521110000', '99900001', 'NR'),
+    withIc('522110100', '31904601', 'ND'),
+    withIc('531100000', '2027', 'AI'),
+    withIc('522110100', '01846', 'FS'),
+  ]);
+  const result = page.getByRole('tabpanel', { name: 'Resultado' });
+  await expect(result.getByText('Sem erros nas verificações executadas')).toBeVisible();
+  await expect(result.getByRole('table')).toHaveCount(0);
+  const tab = page.getByRole('tab', { name: 'Avisos' });
+  await expect(tab.getByText('!', { exact: true })).toBeVisible();
+  await tab.click();
+  const notices = page.getByRole('tabpanel', { name: 'Avisos' });
+  const local = notices.getByRole('table', { name: 'Avisos locais do CSV' });
+  await expect(local.getByRole('row').filter({ hasText: 'Regra C11' })).toHaveCount(0);
+  const nd = local.getByRole('row').filter({ hasText: 'Regra C12' });
+  await expect(nd).toContainText('Conta: 522110100 · Linha: 4');
+  await expect(nd).toContainText('Valor informado: 31904601');
+  await expect(nd).toContainText('Regra C12 · Campo 8 · IC4 · Par 4');
+  await expect(local.getByRole('row').filter({ hasText: 'Regra C14' })).toContainText('posterior');
+  await expect(local.getByRole('row').filter({ hasText: 'Regra C13' })).toContainText('Encargos Especiais');
+  await expect(notices.getByRole('heading', { name: 'Avisos de saldos entre competências' })).toBeVisible();
+  expect(calls).toHaveLength(0);
+});
+
 test('mostra consistência e equilíbrio patrimonial na aba Resultado', async ({ page, context, baseURL }) => {
   const calls = [];
   await mockSiconfi(context, baseURL, filters => { calls.push(filters); return []; });
